@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Brea Factory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=Tenor+Sans&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  --header-bg:#1e1e1e;
+  --body-bg:#f8f7f7;
+  --surface:#ffffff;
+  --border:#e3e1dd;
+  --gold:#c8a96e;
+  --gold-dk:#a88a50;
+  --text:#2a2a2a;
+  --text-sec:#616060;
+  --green:#4caf50;
+  --red:#e53935;
+  --blue:#1976d2;
+  --r:10px;
+  --shadow:0 2px 12px rgba(0,0,0,.06);
+  --font:'DM Sans',sans-serif;
+  --display:'Tenor Sans',serif;
+}
+
+html,body{height:100%}
+body{
+  font-family:var(--font);background:var(--body-bg);color:var(--text);
+  font-size:15px;line-height:1.5;
+  display:flex;flex-direction:column;min-height:100vh;
+  overflow-x:hidden;
+}
+
+/* ── Header ─────────────────────────────────────────── */
+header{
+  position:sticky;top:0;z-index:50;
+  background:var(--header-bg);height:52px;padding:0 12px;
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  border-bottom:1px solid #2e2e2e;flex-shrink:0;
+}
+.hd-title{font-family:var(--display);font-size:18px;color:var(--gold);letter-spacing:.04em;flex-shrink:0}
+.hd-health{display:flex;gap:4px;overflow-x:auto;flex:1;justify-content:center;padding:0 8px;scrollbar-width:none}
+.hd-health::-webkit-scrollbar{display:none}
+.hd-pill{display:inline-flex;align-items:center;gap:4px;font-size:9px;color:#999;padding:2px 7px;border-radius:20px;background:#262626;white-space:nowrap;flex-shrink:0}
+.hd-pill .dot{width:5px;height:5px;border-radius:50%;background:var(--red);flex-shrink:0}
+.hd-pill.online .dot{background:var(--green)}
+#hd-time{font-size:10px;color:#666;flex-shrink:0;white-space:nowrap}
+
+.hd-tabs{display:flex;gap:4px;flex-shrink:0}
+.hd-tab{
+  font-size:10px;font-weight:500;color:#999;background:#262626;
+  border:1px solid transparent;border-radius:20px;padding:3px 10px;
+  cursor:pointer;font-family:var(--font);white-space:nowrap;
+  transition:background .15s,color .15s,border-color .15s;
+}
+.hd-tab:hover{color:#ccc}
+.hd-tab.active{border-color:var(--gold);color:var(--gold);background:#2a2a2a}
+
+/* ── Live preview ───────────────────────────────────── */
+#preview-section{
+  position:relative;background:#f4f4f4;border-bottom:1px solid var(--border);
+  height:60px;overflow:hidden;transition:height .3s ease;flex-shrink:0;
+}
+#preview-section.expanded{height:280px}
+.preview-label{position:absolute;top:8px;left:14px;font-family:var(--display);font-size:12px;color:var(--text-sec);z-index:2}
+.preview-expand{position:absolute;top:7px;right:14px;font-size:11px;color:var(--gold);cursor:pointer;z-index:2;user-select:none;font-family:var(--font);font-weight:500}
+.preview-body{width:100%;height:100%}
+.preview-body iframe{width:100%;height:100%;border:none;display:block}
+.preview-placeholder{
+  display:flex;align-items:center;justify-content:center;height:100%;
+  color:var(--text-sec);font-size:12px;text-align:center;padding:0 32px;
+}
+
+/* ── Dark zone: chat strip + input bar ─────────────────── */
+#dark-zone{position:relative;background:var(--header-bg);flex-shrink:0}
+
+#chat-section{
+  background:var(--header-bg);overflow:hidden;
+  display:flex;flex-direction:column;height:220px;
+}
+#chat-peek{height:44px;display:flex;align-items:center;gap:8px;padding:0 14px;cursor:pointer;flex-shrink:0}
+#chat-area{flex:1;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:10px;}
+
+.msg{display:flex;flex-direction:column;max-width:80%;gap:4px}
+.msg.user{align-self:flex-end;align-items:flex-end;user-select:text;-webkit-user-select:text;}
+.msg.brea{align-self:flex-start;align-items:flex-start;user-select:text;-webkit-user-select:text;}
+.msg-row{display:flex;align-items:flex-end;gap:6px}
+.msg-bubble{padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.5;word-wrap:break-word;white-space:pre-wrap}
+.msg.user .msg-bubble{background:#2a2a2a;border:1px solid var(--gold);color:#f4f1ea;border-bottom-right-radius:4px}
+.msg.brea .msg-bubble{background:#2a2a2a;color:#f4f1ea;border-bottom-left-radius:4px}
+.replay-btn{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:2px;line-height:1;flex-shrink:0;opacity:.75}
+.replay-btn:hover{opacity:1}
+.replay-btn:disabled{opacity:.25;cursor:default}
+
+.typing-bubble{display:inline-flex;gap:4px;padding:10px 13px;background:#2a2a2a;border-radius:14px;border-bottom-left-radius:4px}
+.typing-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:typing-bounce 1.2s infinite}
+.typing-dot:nth-child(2){animation-delay:.15s}
+.typing-dot:nth-child(3){animation-delay:.3s}
+@keyframes typing-bounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+
+.audio-controls{display:flex;gap:6px;margin-top:2px}
+.audio-pill{font-size:10px;font-weight:500;color:var(--gold);background:transparent;border:1px solid var(--gold);border-radius:20px;padding:3px 10px;cursor:pointer;letter-spacing:.04em;font-family:var(--font)}
+.audio-pill:hover{background:rgba(200,169,110,.12)}
+.audio-pill:active{transform:scale(.96)}
+
+/* ── Notification toast ────────────────────────────────── */
+#notif-toast{
+  position:absolute;left:10px;right:10px;bottom:58px;z-index:60;
+  background:#2a2a2a;border:1px solid var(--gold);border-radius:10px;
+  padding:9px 12px;font-size:12px;color:#f4f1ea;cursor:pointer;
+  display:none;box-shadow:0 4px 16px rgba(0,0,0,.35);
+}
+#notif-toast.visible{display:block}
+#notif-toast::before{content:'\25cf  ';color:var(--gold)}
+
+/* ── Input bar ──────────────────────────────────────────── */
+#input-bar{
+  background:var(--header-bg);height:50px;padding:0 10px;
+  display:flex;align-items:center;gap:8px;flex-shrink:0;
+  border-top:1px solid #2e2e2e;
+}
+#plus-btn{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  background:#2a2a2a;border:1px solid #3a3a3a;color:var(--gold);
+  display:flex;align-items:center;justify-content:center;font-size:18px;
+  cursor:pointer;font-family:var(--font);line-height:1;
+}
+#chat-input{
+  flex:1;background:#2a2a2a;border:1px solid #3a3a3a;border-radius:20px;
+  color:#f4f1ea;font-family:var(--font);font-size:14px;
+  padding:8px 14px;outline:none;min-width:0;
+}
+#chat-input::placeholder{color:#777}
+#chat-input:focus{border-color:var(--gold)}
+
+#mic-btn{
+  width:36px;height:36px;border-radius:50%;background:transparent;border:none;
+  padding:0;cursor:pointer;display:flex;align-items:center;justify-content:center;
+  flex-shrink:0;position:relative;touch-action:none;
+}
+#mic-btn img{width:28px;height:28px;object-fit:contain;display:block;border-radius:50%}
+#mic-btn.session{animation:mic-pulse-gold 1.4s ease-in-out infinite}
+#mic-btn.holding{box-shadow:0 0 0 6px rgba(255,255,255,.4)}
+@keyframes mic-pulse-gold{
+  0%,100%{box-shadow:0 0 0 0 rgba(200,169,110,.6)}
+  50%{box-shadow:0 0 0 8px rgba(200,169,110,0)}
+}
+.mic-notif-dot{position:absolute;top:0;right:0;width:9px;height:9px;border-radius:50%;background:var(--gold);border:1.5px solid var(--header-bg);display:none}
+.mic-notif-dot.visible{display:block}
+
+/* ── Stop session button ───────────────────────────────── */
+#stop-session-btn{
+  position:absolute;right:54px;bottom:58px;z-index:61;
+  display:none;align-items:center;justify-content:center;
+  height:26px;padding:0 14px;border-radius:13px;
+  background:var(--red);color:#fff;font-size:11px;font-weight:600;
+  border:none;cursor:pointer;font-family:var(--font);
+  letter-spacing:.05em;box-shadow:0 2px 8px rgba(0,0,0,.35);
+}
+#stop-session-btn.visible{display:flex}
+
+#chat-send{
+  width:36px;height:36px;border-radius:50%;flex-shrink:0;
+  background:var(--gold);border:none;padding:0;
+  display:flex;align-items:center;justify-content:center;
+  cursor:pointer;transition:background .15s,transform .1s;
+}
+#chat-send img{width:28px;height:28px;object-fit:contain;display:block}
+#chat-send:hover{background:#d8bb84}
+#chat-send:active{transform:scale(.97)}
+#chat-send:disabled{opacity:.5;cursor:not-allowed}
+
+/* ── Stat pills ─────────────────────────────────────────── */
+#stats-row{display:flex;gap:8px;padding:12px 14px 0;overflow-x:auto;background:var(--body-bg)}
+.stat-pill{
+  display:flex;align-items:center;gap:5px;flex-shrink:0;
+  font-size:12px;font-weight:500;color:var(--text);
+  border:1px solid var(--gold);border-radius:20px;
+  padding:6px 14px;background:var(--surface);cursor:pointer;
+  transition:background .15s,color .15s;
+}
+.stat-pill.active{background:var(--gold);color:#fff}
+.stat-pill .num{font-family:var(--display);font-size:14px}
+
+#stat-detail{
+  display:none;margin:8px 14px 0;background:var(--surface);
+  border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;box-shadow:var(--shadow);font-size:13px;color:var(--text-sec);
+}
+#stat-detail.visible{display:block}
+#stat-detail h4{font-family:var(--display);font-size:13px;color:var(--text);margin-bottom:6px;font-weight:400}
+
+/* ── Approval / critical card ───────────────────────────── */
+#approval-card{
+  display:none;margin:10px 14px 0;background:var(--surface);
+  border:2px solid var(--gold);border-radius:var(--r);padding:14px;
+  box-shadow:0 4px 20px rgba(200,169,110,.18);
+}
+#approval-card.visible{display:block}
+.ap-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.ap-tag{font-size:10px;font-weight:600;padding:3px 8px;border-radius:4px;text-transform:uppercase;letter-spacing:.05em;color:#fff;background:var(--gold)}
+.ap-name{font-size:13px;font-weight:600}
+.ap-desc{font-size:12px;color:var(--text-sec);margin-bottom:10px;line-height:1.5}
+.ap-note{
+  width:100%;min-height:60px;padding:8px 10px;margin-bottom:10px;
+  border:1px solid var(--border);border-radius:8px;
+  font-family:var(--font);font-size:12px;resize:vertical;outline:none;display:none;
+}
+.ap-note:focus{border-color:var(--gold)}
+.ap-actions{display:flex;gap:8px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:36px;padding:0 18px;border-radius:20px;
+  font-size:13px;font-weight:500;cursor:pointer;border:none;font-family:var(--font);
+  transition:background .15s,transform .1s;
+}
+.btn:active{transform:scale(.97)}
+.btn-approve{background:var(--gold);color:#fff}
+.btn-approve:hover{background:var(--gold-dk)}
+.btn-reject{background:transparent;color:var(--red);border:1px solid var(--red)}
+.btn-reject:hover{background:rgba(229,57,53,.06)}
+
+/* ── Collapsible cards (queue / activity) ──────────────── */
+.section{margin:12px 14px 0}
+.section:last-child{margin-bottom:24px}
+.section-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.section-head{
+  padding:12px 14px;font-family:var(--display);font-size:14px;color:var(--text);
+  display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;
+}
+.section-head .chip{font-size:11px;color:var(--text-sec);background:#f2f2f2;padding:2px 8px;border-radius:12px;font-family:var(--font);margin-left:8px}
+.section-head .chev{transition:transform .2s;color:var(--text-sec);font-size:11px;margin-left:auto;padding-left:8px}
+.section.collapsed .chev{transform:rotate(-90deg)}
+.section.collapsed .section-body{display:none}
+.section-body{padding:0 14px 14px}
+.section-body.with-border{border-top:1px solid var(--border);padding-top:12px}
+
+.task-list{max-height:320px;overflow-y:auto}
+.task-row{padding:9px 0;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px;font-size:12.5px}
+.task-row:last-child{border-bottom:none}
+.task-row-name{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.task-row-module{font-size:10px;color:var(--text-sec);flex-shrink:0}
+.mode-badge{font-size:9px;font-weight:600;padding:2px 6px;border-radius:4px;text-transform:uppercase;letter-spacing:.05em;flex-shrink:0}
+.m-auto{background:#e8f5e9;color:#2e7d32}
+.m-approve{background:#fff8e1;color:#e65100}
+.m-critical{background:#ffebee;color:#b71c1c}
+.s-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.s-queued{background:var(--gold)}
+.s-in-progress{background:var(--blue)}
+.s-complete{background:var(--green)}
+.s-blocked,.s-cancelled{background:var(--red)}
+.empty-msg{padding:18px;text-align:center;color:var(--text-sec);font-size:12px}
+
+.activity-list{max-height:280px;overflow-y:auto}
+.act-item{padding:8px 0 8px 8px;border-bottom:1px solid var(--border);border-left:3px solid transparent;font-size:12px}
+.act-item:last-child{border-bottom:none}
+.act-item.sv-green{border-left-color:var(--green)}
+.act-item.sv-gold{border-left-color:var(--gold)}
+.act-item.sv-red{border-left-color:var(--red)}
+.act-name{font-weight:500}
+.act-meta{font-size:10px;color:var(--text-sec);display:flex;gap:6px;flex-wrap:wrap;margin-top:1px}
+.act-msg{font-size:10px;color:var(--text-sec);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px}
+
+.view{display:none}
+.view.active{display:block}
+
+.launch-view{display:flex;align-items:center;justify-content:center;height:calc(100vh - 52px);background:var(--header-bg)}
+.launch-card{
+  background:#2a2a2a;border:1px solid var(--gold);border-radius:var(--r);
+  padding:32px 40px;text-align:center;max-width:320px;
+}
+.launch-card p{color:#f4f1ea;font-size:14px;margin-bottom:18px;font-family:var(--display)}
+.launch-card .btn-launch{
+  display:inline-flex;align-items:center;justify-content:center;
+  height:40px;padding:0 24px;border-radius:20px;
+  font-size:13px;font-weight:500;color:#1e1e1e;background:var(--gold);
+  text-decoration:none;font-family:var(--font);
+  transition:background .15s,transform .1s;
+}
+.launch-card .btn-launch:hover{background:#d8bb84}
+.launch-card .btn-launch:active{transform:scale(.97)}
+
+/* ── Mobile ──────────────────────────────────────────────── */
+@media(max-width:480px){
+  .hd-title{font-size:15px}
+  .hd-pill{font-size:8px;padding:2px 6px}
+  #hd-time{display:none}
+  .hd-tab{font-size:9px;padding:2px 8px}
+  .msg{max-width:88%}
+  .ap-actions{flex-direction:column}
+  .btn{width:100%}
+}
+</style>
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────────── -->
+<header>
+  <span class="hd-title">Brea Factory</span>
+  <div class="hd-health" id="hd-health">
+    <div class="hd-pill" id="hp-brea3"><span class="dot"></span>Brea3</div>
+    <div class="hd-pill" id="hp-boss"><span class="dot"></span>BOSS</div>
+    <div class="hd-pill" id="hp-factory"><span class="dot"></span>Factory</div>
+    <div class="hd-pill" id="hp-dashboard"><span class="dot"></span>Dash</div>
+  </div>
+  <div id="hd-time">—</div>
+  <div class="hd-tabs" id="hd-tabs">
+    <button class="hd-tab active" data-view="factory" onclick="switchView('factory')">Factory</button>
+    <button class="hd-tab" data-view="brea3" onclick="switchView('brea3')">Brea 3</button>
+    <button class="hd-tab" data-view="boss" onclick="switchView('boss')">BOSS</button>
+  </div>
+</header>
+
+<!-- ── Factory View ───────────────────────────────────────── -->
+<div id="view-factory" class="view active">
+
+<!-- ── Live Preview ───────────────────────────────────────── -->
+<div id="preview-section">
+  <span class="preview-label">Live Preview</span>
+  <span class="preview-expand" id="preview-expand-btn" onclick="togglePreview()">Expand ▾</span>
+  <div class="preview-body" id="preview-body">
+    <div class="preview-placeholder">Preview loads when a task completes with a URL result</div>
+  </div>
+</div>
+
+<!-- ── Dark zone: chat strip + input bar ─────────────────── -->
+<div id="dark-zone">
+  <div id="chat-section">
+    <div id="chat-area"></div>
+  </div>
+
+  <div id="notif-toast" onclick="dismissToast()"></div>
+
+  <button id="stop-session-btn" onclick="stopSession()" aria-label="Stop voice session">Stop</button>
+
+  <div id="input-bar">
+    <button id="plus-btn" aria-label="More" onclick="onPlusClick()">+</button>
+    <input id="chat-input" type="text" autocomplete="off"
+      placeholder="Talk to Brea or describe a build..."
+      onkeydown="chatInputKeydown(event)">
+    <button id="mic-btn" aria-label="Speak">
+      <img src="/static/mic-icon.png" alt="Mic">
+      <span class="mic-notif-dot" id="mic-notif-dot"></span>
+    </button>
+    <button id="chat-send" onclick="sendChatMessage()">
+      <img src="/static/send-icon.png" alt="Send">
+    </button>
+  </div>
+</div>
+
+<!-- ── Stat pills ─────────────────────────────────────────── -->
+<div id="stats-row">
+  <div class="stat-pill" data-key="active" onclick="toggleStatDetail('active')">
+    <span class="num" id="s-active">—</span> Active
+  </div>
+  <div class="stat-pill" data-key="pending" onclick="toggleStatDetail('pending')">
+    <span class="num" id="s-pending">—</span> Pending
+  </div>
+  <div class="stat-pill" data-key="queue" onclick="toggleStatDetail('queue')">
+    <span class="num" id="s-queue">—</span> Queue
+  </div>
+  <div class="stat-pill" data-key="issues" onclick="toggleStatDetail('issues')">
+    <span class="num" id="s-issues">—</span> Issues
+  </div>
+</div>
+<div id="stat-detail"></div>
+
+<!-- ── Approval / Critical card ──────────────────────────── -->
+<div id="approval-card">
+  <div class="ap-head">
+    <span class="ap-tag" id="ap-tag">Approval Required</span>
+    <span class="ap-name" id="ap-name">—</span>
+  </div>
+  <div class="ap-desc" id="ap-desc">—</div>
+  <textarea id="ap-note" class="ap-note"
+    placeholder="Required: written reason for this critical task (min 20 chars)…"></textarea>
+  <div class="ap-actions">
+    <button class="btn btn-approve" onclick="doApprove()">Approve</button>
+    <button class="btn btn-reject"  onclick="doReject()">Reject</button>
+  </div>
+</div>
+
+<!-- ── Task Queue (collapsible, collapsed by default) ────── -->
+<div class="section collapsed" id="section-queue">
+  <div class="section-card">
+    <div class="section-head" onclick="toggleSection('queue')">
+      <span>Task Queue</span>
+      <span class="chip" id="queue-count">0</span>
+      <span class="chev">▾</span>
+    </div>
+    <div class="section-body with-border">
+      <div class="task-list" id="task-list">
+        <div class="empty-msg">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ── Activity (collapsible, collapsed by default) ──────── -->
+<div class="section collapsed" id="section-activity">
+  <div class="section-card">
+    <div class="section-head" onclick="toggleSection('activity')">
+      <span>Activity</span>
+      <span class="chip" id="activity-count">0</span>
+      <span class="chev">▾</span>
+    </div>
+    <div class="section-body with-border">
+      <div class="activity-list" id="activity-list">
+        <div class="empty-msg">Loading…</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</div>
+<!-- ── Brea 3 View ────────────────────────────────────────── -->
+<div id="view-brea3" class="view launch-view">
+  <div class="launch-card">
+    <p>Opening Brea 3…</p>
+    <a class="btn-launch" href="https://brea3.ngrok.app" target="_blank" rel="noopener">Open Brea 3 →</a>
+  </div>
+</div>
+
+<!-- ── BOSS View ──────────────────────────────────────────── -->
+<div id="view-boss" class="view launch-view">
+  <div class="launch-card">
+    <p>Opening The BOSS…</p>
+    <a class="btn-launch" href="https://theboss.ngrok.app" target="_blank" rel="noopener">Open The BOSS →</a>
+  </div>
+</div>
+
+<script>
+'use strict';
+
+const socket = io();
+
+// ── State ──────────────────────────────────────────────────────────────────
+let audioCtx        = null;
+let currentSource   = null;   // AudioBufferSourceNode currently playing
+let isPaused        = false;
+let currentBreaMsgEl = null;  // .msg.brea element awaiting/playing audio
+let _audioChunks    = [];     // accumulates audio_chunk payloads for the current turn
+
+let mediaRecorder   = null;
+let micMode         = 'idle'; // idle | session | holding
+let _silenceTimer   = null;
+let _holdTimer      = null;
+let _holdActive     = false;
+let _handsFree      = false;  // true = continuous voice conversation; auto-reopens mic after Brea finishes speaking
+const SILENCE_TIMEOUT = 1500;
+const HOLD_THRESHOLD  = 350;
+
+let _lastTasks      = [];
+let _lastActivity   = [];
+let _activeStatKey  = null;
+let _currentTask    = null;   // approval/critical card payload
+
+let _specMessages   = [];
+let _specActive     = false;
+const BUILD_INTENT_RE = /\b(build|create|add|implement|develop|set ?up|integrate|spec out|new (feature|capability)|kick off)\b/i;
+
+let _pendingNotification = null;
+let _breaBusy = false;
+
+// ── Chat helpers ──────────────────────────────────────────────────────────
+function addChatMessage(text, speaker) {
+  const area = document.getElementById('chat-area');
+  const div  = document.createElement('div');
+  div.className = `msg ${speaker}`;
+  const row  = document.createElement('div');
+  row.className = 'msg-row';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  if (speaker === 'brea') {
+    const replay = document.createElement('button');
+    replay.className = 'replay-btn';
+    replay.innerHTML  = '&#9658;'; // ▶
+    replay.disabled   = true;
+    replay.title      = 'Replay';
+    replay.onclick    = () => replayMessage(div);
+    row.appendChild(replay);
+  }
+  div.appendChild(row);
+  area.appendChild(div);
+  scrollChat();
+  return div;
+}
+
+function showTypingBubble() {
+  removeTypingBubble();
+  const area = document.getElementById('chat-area');
+  const div  = document.createElement('div');
+  div.className = 'msg brea';
+  div.id = 'typing-bubble';
+  div.innerHTML = `<div class="typing-bubble">
+    <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+  </div>`;
+  area.appendChild(div);
+  scrollChat();
+}
+
+function removeTypingBubble() {
+  const el = document.getElementById('typing-bubble');
+  if (el) el.remove();
+}
+
+function scrollChat() {
+  const area = document.getElementById('chat-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+
+// ── Audio playback (single-buffer, accumulated across audio_chunk events) ──
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function base64ToArrayBuffer(b64) {
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+
+function arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function concatBuffers(buffers) {
+  const total = buffers.reduce((s, b) => s + b.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const b of buffers) { out.set(new Uint8Array(b), offset); offset += b.byteLength; }
+  return out.buffer;
+}
+
+function stopCurrentAudio() {
+  if (currentSource) {
+    try { currentSource.onended = null; currentSource.stop(); } catch (e) {}
+    currentSource = null;
+  }
+}
+
+async function playAudioBuffer(buf, msgEl) {
+  try {
+    const ctx     = getAudioCtx();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const decoded = await ctx.decodeAudioData(buf);
+    stopCurrentAudio();
+    const src   = ctx.createBufferSource();
+    src.buffer  = decoded;
+    src.connect(ctx.destination);
+    src.onended = () => {
+      if (currentSource === src) {
+        currentSource = null;
+        finishBreaTurn(msgEl);
+      }
+    };
+    currentSource    = src;
+    isPaused         = false;
+    currentBreaMsgEl = msgEl;
+    src.start();
+    if (msgEl) showAudioControls(msgEl);
+  } catch (e) {
+    console.warn('Audio decode error:', e);
+    finishBreaTurn(msgEl);
+  }
+}
+
+function showAudioControls(msgEl) {
+  hideAudioControls();
+  if (!msgEl) return;
+  const ctrl = document.createElement('div');
+  ctrl.className = 'audio-controls';
+  ctrl.id = 'audio-controls';
+
+  const pauseBtn = document.createElement('button');
+  pauseBtn.className = 'audio-pill';
+  pauseBtn.textContent = 'Pause';
+  pauseBtn.onclick = () => {
+    pauseAudio();
+    pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+  };
+
+  const stopBtn = document.createElement('button');
+  stopBtn.className = 'audio-pill';
+  stopBtn.textContent = 'Stop';
+  stopBtn.onclick = stopAudio;
+
+  ctrl.appendChild(pauseBtn);
+  ctrl.appendChild(stopBtn);
+  msgEl.appendChild(ctrl);
+  scrollChat();
+}
+
+function hideAudioControls() {
+  const el = document.getElementById('audio-controls');
+  if (el) el.remove();
+}
+
+function finishBreaTurn(msgEl) {
+  hideAudioControls();
+  if (currentBreaMsgEl === msgEl) currentBreaMsgEl = null;
+  tryShowNotification();
+  if (_handsFree) openMicSession();
+}
+
+function pauseAudio() {
+  const ctx = getAudioCtx();
+  if (ctx.state === 'running')        { ctx.suspend(); isPaused = true;  }
+  else if (ctx.state === 'suspended') { ctx.resume();  isPaused = false; }
+}
+
+function stopAudio() {
+  stopCurrentAudio();
+  const ctx = getAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  isPaused = false;
+  finishBreaTurn(currentBreaMsgEl);
+  socket.emit('voice_interrupt');
+  openMicSession();
+}
+
+function replayMessage(div) {
+  const b64 = div.dataset.audio;
+  if (!b64) return;
+  playAudioBuffer(base64ToArrayBuffer(b64), div);
+}
+
+
+// ── Mic — tap = voice session, hold = voice note ───────────────────────────
+const micBtn = document.getElementById('mic-btn');
+
+micBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (micMode === 'session') return; // resolved on pointerup (second tap)
+  _holdTimer = setTimeout(() => {
+    _holdActive = true;
+    micMode = 'holding';
+    _handsFree = false;
+    micBtn.classList.add('holding');
+    startRecording();
+    updateStopButtonVisibility();
+  }, HOLD_THRESHOLD);
+});
+
+micBtn.addEventListener('pointerup', e => {
+  e.preventDefault();
+  onMicRelease();
+});
+
+micBtn.addEventListener('pointercancel', onMicRelease);
+micBtn.addEventListener('pointerleave', e => { if (_holdActive) onMicRelease(e); });
+
+function onMicRelease() {
+  if (_holdActive) {
+    clearTimeout(_holdTimer);
+    _holdActive = false;
+    micMode = 'idle';
+    micBtn.classList.remove('holding');
+    stopRecording();
+    updateStopButtonVisibility();
+    return;
+  }
+  clearTimeout(_holdTimer);
+  if (micMode === 'session') {
+    micMode = 'idle';
+    micBtn.classList.remove('session');
+    stopRecording();
+  } else {
+    micMode = 'session';
+    micBtn.classList.add('session');
+    _handsFree = true;
+    startRecording();
+  }
+  updateStopButtonVisibility();
+}
+
+function openMicSession() {
+  if (micMode !== 'idle') return; // already recording
+  micMode = 'session';
+  micBtn.classList.add('session');
+  _handsFree = true;
+  startRecording();
+  updateStopButtonVisibility();
+}
+
+// ── Stop Session — hard stop, no auto-reopen until mic is tapped again ─────
+function updateStopButtonVisibility() {
+  const btn = document.getElementById('stop-session-btn');
+  btn.classList.toggle('visible', micMode !== 'idle' || _handsFree);
+}
+
+function stopSession() {
+  _handsFree = false;
+  clearTimeout(_holdTimer);
+  _holdActive = false;
+  if (micMode !== 'idle') {
+    micMode = 'idle';
+    micBtn.classList.remove('session', 'holding');
+    if (_silenceTimer) { clearTimeout(_silenceTimer); _silenceTimer = null; }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    }
+  }
+  socket.emit('voice_interrupt');
+  stopCurrentAudio();
+  hideAudioControls();
+  removeTypingBubble();
+  _breaBusy = false;
+  updateStopButtonVisibility();
+}
+
+async function startRecording() {
+  try {
+    const stream   = await navigator.mediaDevices.getUserMedia({audio: true});
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : 'audio/webm';
+    mediaRecorder = new MediaRecorder(stream, {mimeType});
+    mediaRecorder.ondataavailable = onAudioSlice;
+    mediaRecorder.start(250);
+    showTypingBubble();
+  } catch (e) {
+    alert('Microphone access denied: ' + e.message);
+    micMode = 'idle';
+    micBtn.classList.remove('session', 'holding');
+    _holdActive = false;
+  }
+}
+
+function onAudioSlice(e) {
+  if (e.data.size === 0) return;
+  if (micMode === 'session') {
+    if (_silenceTimer) clearTimeout(_silenceTimer);
+    _silenceTimer = setTimeout(() => {
+      if (micMode === 'session') {
+        micMode = 'idle';
+        micBtn.classList.remove('session');
+        stopRecording();
+        updateStopButtonVisibility();
+      }
+    }, SILENCE_TIMEOUT);
+  }
+  e.data.arrayBuffer().then(buf => {
+    const bytes = new Uint8Array(buf);
+    let binary  = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    socket.emit('audio_chunk', {chunk: btoa(binary)});
+  });
+}
+
+function stopRecording() {
+  if (_silenceTimer) { clearTimeout(_silenceTimer); _silenceTimer = null; }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  }
+  socket.emit('voice_stop');
+}
+
+
+// ── Text input — routes to /respond (question) or /api/spec (build) ───────
+function chatInputKeydown(e) {
+  if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(); }
+}
+
+function onPlusClick() {
+  // placeholder — reserved for attachments / quick actions
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const btn   = document.getElementById('chat-send');
+  const text  = (input.value || '').trim();
+  if (!text) return;
+  input.value = '';
+  btn.disabled = true;
+
+  addChatMessage(text, 'user');
+  showTypingBubble();
+  _breaBusy = true;
+
+  try {
+    if (_specActive || BUILD_INTENT_RE.test(text)) {
+      await sendToSpec(text);
+    } else {
+      await sendToRespond(text);
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sendToRespond(text) {
+  try {
+    const r = await fetch('/respond', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({transcript: text, source: 'voice'}),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      removeTypingBubble();
+      addChatMessage('Error: ' + (e.error || r.statusText), 'brea');
+      _breaBusy = false; tryShowNotification();
+    }
+  } catch (e) {
+    removeTypingBubble();
+    addChatMessage('Request failed: ' + e.message, 'brea');
+    _breaBusy = false; tryShowNotification();
+  }
+}
+
+async function sendToSpec(text) {
+  _specActive = true;
+  _specMessages.push({role: 'user', content: text});
+
+  try {
+    const r = await fetch('/api/spec', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({messages: _specMessages}),
+    });
+    const data = await r.json();
+    removeTypingBubble();
+
+    if (!r.ok || data.error) {
+      addChatMessage('Error: ' + (data.error || 'Server error'), 'brea');
+      _specMessages.pop();
+      if (!_specMessages.length) _specActive = false;
+      _breaBusy = false; tryShowNotification();
+      return;
+    }
+
+    _specMessages.push({role: 'assistant', content: data.reply});
+    currentBreaMsgEl = addChatMessage(data.reply, 'brea');
+
+    // speak the reply (text already generated — skips Claude in /respond)
+    fetch('/respond', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({text: data.reply, source: 'spec'}),
+    }).catch(() => {});
+
+    if (data.ready) {
+      const bits = [];
+      if (data.tasks_queued_names && data.tasks_queued_names.length) {
+        bits.push(`Queued: ${data.tasks_queued_names.join(', ')}.`);
+      }
+      if (data.tasks_failed && data.tasks_failed.length) {
+        bits.push(`Failed: ${data.tasks_failed.map(f => f.task).join(', ')}.`);
+      }
+      if (bits.length) addChatMessage(bits.join(' '), 'brea');
+      _specMessages = [];
+      _specActive   = false;
+      loadTasks();
+    }
+    _breaBusy = false; tryShowNotification();
+  } catch (e) {
+    removeTypingBubble();
+    addChatMessage('Request failed: ' + e.message, 'brea');
+    _specMessages.pop();
+    if (!_specMessages.length) _specActive = false;
+    _breaBusy = false; tryShowNotification();
+  }
+}
+
+
+// ── Notifications ───────────────────────────────────────────────────────────
+socket.on('brea_notification', data => {
+  const text = (data && (data.message || data.text)) || '';
+  if (!text) return;
+  _pendingNotification = text;
+  document.getElementById('mic-notif-dot').classList.add('visible');
+  tryShowNotification();
+});
+
+function tryShowNotification() {
+  if (!_pendingNotification || _breaBusy || currentSource) return;
+  const toast = document.getElementById('notif-toast');
+  toast.textContent = _pendingNotification;
+  toast.classList.add('visible');
+}
+
+function dismissToast() {
+  document.getElementById('notif-toast').classList.remove('visible');
+  document.getElementById('mic-notif-dot').classList.remove('visible');
+  _pendingNotification = null;
+}
+
+
+// ── Socket events — voice / chat ──────────────────────────────────────────
+socket.on('transcript_update', ({text, speaker, source}) => {
+  if (source === 'spec') return; // already rendered by sendToSpec()
+  if (speaker === 'user') { addChatMessage(text, 'user'); return; }
+  removeTypingBubble();
+  currentBreaMsgEl = addChatMessage(text, 'brea');
+  _breaBusy = false;
+  tryShowNotification();
+});
+
+socket.on('voice_error', ({error}) => {
+  console.error('[VOICE ERROR]', error);
+  removeTypingBubble();
+  micMode = 'idle';
+  micBtn.classList.remove('session', 'holding');
+  _breaBusy = false;
+  updateStopButtonVisibility();
+});
+
+socket.on('voice_interrupted', () => {
+  removeTypingBubble();
+  _audioChunks = [];
+  _breaBusy = false;
+});
+
+socket.on('audio_chunk', ({data, done, error}) => {
+  if (error) console.warn('[AUDIO]', error);
+  if (data) _audioChunks.push(base64ToArrayBuffer(data));
+  if (!done) return;
+
+  const buf = concatBuffers(_audioChunks);
+  _audioChunks = [];
+
+  if (!buf.byteLength) { finishBreaTurn(currentBreaMsgEl); return; }
+  if (currentBreaMsgEl) {
+    currentBreaMsgEl.dataset.audio = arrayBufferToBase64(buf);
+    const replayBtn = currentBreaMsgEl.querySelector('.replay-btn');
+    if (replayBtn) replayBtn.disabled = false;
+  }
+  playAudioBuffer(buf.slice(0), currentBreaMsgEl);
+});
+
+
+// ── Sections (collapse / expand) ──────────────────────────────────────────
+function toggleSection(name) {
+  const el = document.getElementById(`section-${name}`);
+  if (el) el.classList.toggle('collapsed');
+}
+
+function togglePreview() {
+  const sec = document.getElementById('preview-section');
+  const btn = document.getElementById('preview-expand-btn');
+  const expanded = sec.classList.toggle('expanded');
+  btn.textContent = expanded ? 'Collapse ▴' : 'Expand ▾';
+}
+
+
+// ── View switching (Factory / Brea 3 / BOSS) ───────────────────────────────
+const REDIRECT_URLS = { brea3: 'https://brea3.ngrok.app', boss: 'https://theboss.ngrok.app' };
+
+function switchView(view) {
+  document.querySelectorAll('.hd-tab').forEach(t => t.classList.toggle('active', t.dataset.view === view));
+  document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `view-${view}`));
+  if (view === 'brea3' || view === 'boss') window.open(REDIRECT_URLS[view], '_blank');
+}
+
+
+// ── Stat pills ─────────────────────────────────────────────────────────────
+const STAT_DETAILS = {
+  active:  'Capabilities currently live and serving traffic across the empire.',
+  pending: 'Capabilities specced and queued for build but not yet active.',
+};
+
+function toggleStatDetail(key) {
+  const detail = document.getElementById('stat-detail');
+  const pills  = document.querySelectorAll('.stat-pill');
+  if (_activeStatKey === key) {
+    _activeStatKey = null;
+    detail.classList.remove('visible');
+    pills.forEach(p => p.classList.remove('active'));
+    return;
+  }
+  _activeStatKey = key;
+  pills.forEach(p => p.classList.toggle('active', p.dataset.key === key));
+  renderStatDetail(key);
+  detail.classList.add('visible');
+}
+
+function renderStatDetail(key) {
+  const detail = document.getElementById('stat-detail');
+  if (key === 'queue') {
+    const rows = _lastTasks.filter(t => t.status === 'Queued' || t.status === 'In Progress').slice(0, 5);
+    detail.innerHTML = '<h4>Task Queue</h4>' + (rows.length
+      ? rows.map(t => `<div style="padding:3px 0">${esc(t.name)} <span style="color:var(--text-sec)">— ${esc(t.status)}</span></div>`).join('')
+      : '<div>Queue is empty.</div>');
+  } else if (key === 'issues') {
+    const rows = _lastActivity.filter(a => a.resolution === 'Open').slice(0, 5);
+    detail.innerHTML = '<h4>Open Issues</h4>' + (rows.length
+      ? rows.map(a => `<div style="padding:3px 0">${esc(a.name)} <span style="color:var(--text-sec)">— ${esc(a.message)}</span></div>`).join('')
+      : '<div>No open issues.</div>');
+  } else {
+    const title = key === 'active' ? 'Active Capabilities' : 'Pending Build';
+    detail.innerHTML = `<h4>${title}</h4><div>${STAT_DETAILS[key]}</div>`;
+  }
+}
+
+
+// ── Approval / Critical card ──────────────────────────────────────────────
+function showApprovalCard(data, isCritical) {
+  _currentTask = {...data, isCritical};
+  document.getElementById('ap-name').textContent = data.task_name || '—';
+  document.getElementById('ap-desc').textContent =
+    data.description || data.instruction || 'No description provided.';
+  const tag = document.getElementById('ap-tag');
+  tag.textContent = isCritical ? 'Critical — Confirm Required' : 'Approval Required';
+  tag.style.background = isCritical ? 'var(--red)' : 'var(--gold)';
+  document.getElementById('ap-note').style.display = isCritical ? 'block' : 'none';
+  document.getElementById('approval-card').classList.add('visible');
+}
+
+function hideApprovalCard() {
+  _currentTask = null;
+  document.getElementById('approval-card').classList.remove('visible');
+  document.getElementById('ap-note').value = '';
+}
+
+async function doApprove() {
+  if (!_currentTask) return;
+  const id = _currentTask.task_id;
+  try {
+    if (_currentTask.isCritical) {
+      const note = document.getElementById('ap-note').value.trim();
+      if (note.length < 20) { alert('Critical tasks require a note of at least 20 characters.'); return; }
+      const r = await fetch(`/api/confirm/${id}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({note}),
+      });
+      if (!r.ok) { const e = await r.json(); alert(`Confirm failed: ${e.error || 'error'}`); return; }
+    } else {
+      await fetch(`/api/approve/${id}`, {method: 'POST'});
+    }
+    hideApprovalCard(); loadTasks();
+  } catch (e) { alert(`Action failed: ${e.message}`); }
+}
+
+async function doReject() {
+  if (!_currentTask) return;
+  try {
+    await fetch(`/api/reject/${_currentTask.task_id}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reason: 'Rejected via dashboard'}),
+    });
+    hideApprovalCard(); loadTasks();
+  } catch (e) { alert(`Reject failed: ${e.message}`); }
+}
+
+
+// ── Data loading ───────────────────────────────────────────────────────────
+async function get(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+
+function setText(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = (val != null) ? val : '—';
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function fmtTime(iso) {
+  try { return new Date(iso).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}); }
+  catch { return ''; }
+}
+
+async function loadConversationHistory() {
+  try {
+    const history = await get('/api/conversation-history');
+    if (!Array.isArray(history) || !history.length) return;
+    history.slice().reverse().forEach(item => {
+      if (item.user) addChatMessage(item.user, 'user');
+      if (item.brea) addChatMessage(item.brea, 'brea');
+    });
+  } catch {}
+}
+
+async function loadStats() {
+  try {
+    const d = await get('/api/empire-status');
+    setText('s-active',  d.active_capabilities);
+    setText('s-pending', d.pending_build);
+    setText('s-queue',   d.tasks_in_queue);
+    setText('s-issues',  d.open_issues);
+  } catch {}
+}
+
+async function loadHealth() {
+  try {
+    const d = await get('/api/health');
+    [['brea3','hp-brea3'],['boss','hp-boss'],['factory','hp-factory']].forEach(([k, id]) => {
+      const el = document.getElementById(id);
+      if (!el || !d[k]) return;
+      const {name, online} = d[k];
+      el.className  = `hd-pill ${online ? 'online' : ''}`;
+      el.innerHTML  = `<span class="dot"></span>${name}`;
+    });
+  } catch {}
+}
+
+function sDot(s) {
+  const m = {'Queued':'s-queued','In Progress':'s-in-progress',
+             'Complete':'s-complete','Blocked':'s-blocked','Cancelled':'s-cancelled'};
+  return m[s] || 's-queued';
+}
+function mBadge(m) {
+  return m === 'Critical' ? 'm-critical' : m === 'Approve' ? 'm-approve' : 'm-auto';
+}
+
+async function loadTasks() {
+  try {
+    const tasks = await get('/api/tasks');
+    if (!Array.isArray(tasks)) return;
+    _lastTasks = tasks;
+    setText('queue-count', tasks.length);
+    const el = document.getElementById('task-list');
+    if (!tasks.length) { el.innerHTML = '<div class="empty-msg">Queue empty</div>'; return; }
+    el.innerHTML = tasks.map(t => `
+      <div class="task-row">
+        <span class="s-dot ${sDot(t.status)}"></span>
+        <span class="task-row-name" title="${esc(t.name)}">${esc(t.name)}</span>
+        <span class="task-row-module">${esc(t.module)}</span>
+        <span class="mode-badge ${mBadge(t.mode)}">${esc(t.mode || 'Auto')}</span>
+      </div>`).join('');
+    if (_activeStatKey === 'queue') renderStatDetail('queue');
+  } catch {}
+}
+
+function svClass(cat, type) {
+  if (cat === 'Hard Break' || type === 'Hard Failure') return 'sv-red';
+  if (cat === 'Recovery')                              return 'sv-green';
+  return 'sv-gold';
+}
+
+async function loadActivity() {
+  try {
+    const items = await get('/api/activity');
+    if (!Array.isArray(items)) return;
+    _lastActivity = items;
+    setText('activity-count', items.length);
+    const el = document.getElementById('activity-list');
+    if (!items.length) { el.innerHTML = '<div class="empty-msg">No activity yet</div>'; return; }
+    el.innerHTML = items.slice(0, 5).map(i => `
+      <div class="act-item ${svClass(i.category, i.type)}">
+        <div class="act-name">${esc(i.name)}</div>
+        <div class="act-meta">
+          <span>${esc(i.category)}</span><span>${esc(i.instance)}</span>
+          <span>${esc(i.resolution)}</span><span>${fmtTime(i.created)}</span>
+        </div>
+        ${i.message ? `<div class="act-msg">${esc(i.message)}</div>` : ''}
+      </div>`).join('');
+    if (_activeStatKey === 'issues') renderStatDetail('issues');
+  } catch {}
+}
+
+function tryPreview(text) {
+  const m = (text || '').match(/https?:\/\/[^\s"'<>]+/);
+  if (!m) return;
+  document.getElementById('preview-body').innerHTML =
+    `<iframe src="${esc(m[0])}" sandbox="allow-scripts allow-same-origin allow-forms" loading="lazy"></iframe>`;
+}
+
+
+// ── Factory bridge events ──────────────────────────────────────────────────
+socket.on('approve_required',  data => showApprovalCard(data, false));
+socket.on('critical_required', data => showApprovalCard(data, true));
+socket.on('task_complete',  data => { loadTasks(); loadStats(); loadActivity(); tryPreview(data.result); });
+socket.on('task_failed',    ()   => { loadTasks(); loadStats(); loadActivity(); });
+socket.on('task_blocked',   ()   => { loadTasks(); loadActivity(); });
+socket.on('task_rejected',  ()   => { loadTasks(); hideApprovalCard(); });
+socket.on('factory_status', ()   => loadHealth());
+socket.on('health_critical',()   => loadHealth());
+socket.on('health_warning', ()   => loadHealth());
+
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+async function refreshAll() {
+  await Promise.allSettled([loadStats(), loadTasks(), loadActivity(), loadHealth()]);
+  setText('hd-time', 'Updated ' +
+    new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', second: '2-digit'}));
+}
+
+// Dashboard pill reflects this page being live
+document.getElementById('hp-dashboard').className = 'hd-pill online';
+document.getElementById('hp-dashboard').innerHTML = '<span class="dot"></span>5003';
+
+loadConversationHistory();
+refreshAll();
+setInterval(refreshAll, 30_000);
+</script>
+</body>
+</html>

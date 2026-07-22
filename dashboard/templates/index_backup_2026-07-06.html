@@ -1,0 +1,1097 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Brea Factory</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&family=Tenor+Sans&display=swap" rel="stylesheet">
+<script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+[hidden]{display:none!important}
+
+:root{
+  --gold:#c8a96e; --gold-bright:#e6cf97; --gold-dk:#a88a50;
+  --grad:linear-gradient(135deg,#e6cf97,#c8a96e 46%,#a9884f);
+  --surface:rgba(28,24,20,.92); --glass:rgba(18,15,13,.86); --border:rgba(200,169,110,.20); --border-soft:rgba(200,169,110,.10);
+  --text:#ece7df; --text-sec:#9a938a; --green:#74c98d; --amber:#e6b455; --red:#e07a6a;
+  --disp:'Tenor Sans',Georgia,serif; --font:'DM Sans',system-ui,sans-serif; --mono:'DM Mono',ui-monospace,monospace;
+  /* Brea 3 wordmark accent — recolored to Factory gold, animation kept EXACT */
+  --brea-accent: var(--gold);
+  --brea-accent-glow: rgba(200,169,110,.35);
+  --brea-accent-dim:  rgba(200,169,110,.35);
+  --brea-accent-faint:rgba(200,169,110,.15);
+}
+html,body{height:100%}
+body{
+  margin:0;background:#040404;color:var(--text);font-family:var(--font);
+  -webkit-font-smoothing:antialiased;overflow:hidden;
+}
+
+.app{
+  position:relative;width:100%;height:100dvh;overflow:hidden;
+  display:flex;flex-direction:column;
+  background:
+    radial-gradient(ellipse 62% 40% at 50% 66%,rgba(200,169,110,.13),transparent 70%),
+    radial-gradient(ellipse 90% 60% at 50% 120%,rgba(200,169,110,.06),transparent 60%),
+    linear-gradient(180deg,#0c0b0a,#070605);
+}
+
+/* ══ STAGE — persistent full background, never collapses ══════════════════ */
+.stage{position:absolute;inset:0;z-index:0;display:flex;flex-direction:column;align-items:center;justify-content:center;pointer-events:none}
+.stage-wordmark-wrap{display:flex;flex-direction:column;align-items:center;gap:18px;padding-bottom:8vh}
+
+/* Brea 3's exact wordmark treatment — font, glow, breathing/shimmer keyframes reused verbatim, recolored to Factory gold */
+.brea-name{
+  font-family:var(--disp);
+  font-size:clamp(56px,13vw,112px);
+  letter-spacing:0.28em; text-transform:uppercase;
+  background:linear-gradient(
+    160deg,
+    #4a3a1a 0%,
+    #a9884f 18%,
+    #f0dfb0 32%,
+    #ffffff 47%,
+    #f0dfb0 52%,
+    #a9884f 68%,
+    #6b5530 80%,
+    #c8a96e 92%,
+    #4a3a1a 100%
+  );
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text;
+  background-size:200% 200%;
+  filter:drop-shadow(0 0 8px rgba(200,169,110,.55)) drop-shadow(0 2px 4px rgba(0,0,0,.6));
+  animation: breaBreathe 4s ease-in-out infinite, breaShin 3s ease-in-out infinite;
+}
+.stage-cap{
+  font-family:var(--mono); font-size:10px; letter-spacing:.32em; text-transform:uppercase;
+  color:rgba(255,255,255,.22);
+}
+@keyframes breaShin{
+  0%{background-position:0% 50%} 50%{background-position:100% 50%} 100%{background-position:0% 50%}
+}
+@keyframes breaBreathe{
+  0%,100%{ opacity:.62; text-shadow:0 0 18px var(--brea-accent-dim), 0 0 56px var(--brea-accent-faint); }
+  50%{ opacity:1; text-shadow:0 0 40px var(--brea-accent), 0 0 100px var(--brea-accent-dim); }
+}
+
+/* ══ TOPBAR ══════════════════════════════════════════════════════════════ */
+.topbar{
+  position:relative;z-index:2;flex:none;display:flex;align-items:center;justify-content:space-between;
+  padding:calc(12px + env(safe-area-inset-top)) 16px 8px;
+}
+.status{display:flex;align-items:center;gap:7px;font-family:var(--mono);font-size:10px;letter-spacing:.1em;color:var(--text-sec)}
+.status .dot{width:7px;height:7px;border-radius:50%;background:var(--amber);box-shadow:0 0 7px var(--amber);flex-shrink:0}
+.status .dot.online{background:var(--green);box-shadow:0 0 7px var(--green)}
+.tagline{font-family:var(--mono);font-size:9px;letter-spacing:.3em;color:var(--text-sec);text-transform:uppercase}
+.quicklinks{display:flex;gap:12px}
+.qlink{font-family:var(--font);font-size:11px;color:var(--gold);text-decoration:none;opacity:.85}
+.qlink:hover{opacity:1}
+
+/* ══ Notification toast ═════════════════════════════════════════════════ */
+#notif-toast{
+  position:absolute;left:14px;right:14px;bottom:150px;z-index:40;
+  background:var(--surface);border:1px solid var(--gold);border-radius:12px;
+  padding:10px 14px;font-size:12px;color:var(--text);cursor:pointer;
+  display:none;box-shadow:0 4px 20px rgba(0,0,0,.4);
+}
+#notif-toast.visible{display:block}
+#notif-toast::before{content:'\25cf  ';color:var(--gold)}
+
+/* ══ Live approval / critical card — REAL, floats over the stage ═════════ */
+#approval-card{
+  display:none;position:absolute;left:14px;right:14px;top:64px;z-index:30;
+  background:var(--surface);backdrop-filter:blur(14px);
+  border:1.5px solid var(--gold);border-radius:16px;padding:16px;
+  box-shadow:0 8px 30px rgba(0,0,0,.5);
+}
+#approval-card.visible{display:block}
+.ap-head{display:flex;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap}
+.ap-tag{font-family:var(--mono);font-size:9px;font-weight:600;padding:3px 9px;border-radius:999px;text-transform:uppercase;letter-spacing:.08em;color:#241b0d;background:var(--gold)}
+.ap-name{font-size:13.5px;font-weight:600;color:var(--text)}
+.ap-desc{font-size:12.5px;color:var(--text-sec);margin-bottom:10px;line-height:1.5}
+.ap-note{
+  width:100%;min-height:60px;padding:9px 11px;margin-bottom:10px;
+  background:rgba(0,0,0,.35);border:1px solid var(--border-soft);border-radius:10px;
+  color:var(--text);font-family:var(--font);font-size:12.5px;resize:vertical;outline:none;display:none;
+}
+.ap-note:focus{border-color:var(--gold)}
+.ap-actions{display:flex;gap:8px}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;height:36px;padding:0 16px;
+  border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;border:1px solid var(--border);
+  background:transparent;color:var(--text);font-family:var(--font);transition:.15s;
+}
+.btn:active{transform:scale(.97)}
+.btn-approve{background:var(--grad);color:#241b0d;border:none;font-weight:600}
+.btn-reject{color:var(--red);border-color:rgba(224,122,106,.4)}
+
+/* ══ Center controls: mic + Dashboard lift, low on the stage ═════════════ */
+.center{position:relative;z-index:2;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:16px;padding-bottom:22px}
+#stop-session-btn{
+  display:none;align-items:center;justify-content:center;height:26px;padding:0 14px;border-radius:13px;
+  background:var(--red);color:#fff;font-size:11px;font-weight:600;border:none;cursor:pointer;
+  font-family:var(--font);letter-spacing:.05em;box-shadow:0 2px 8px rgba(0,0,0,.35);
+}
+#stop-session-btn.visible{display:flex}
+#mic-btn{
+  width:66px;height:66px;border-radius:50%;border:none;cursor:pointer;background:var(--grad);color:#2a2010;
+  display:grid;place-items:center;box-shadow:0 6px 26px rgba(200,169,110,.4);position:relative;touch-action:none;
+}
+#mic-btn svg{width:26px;height:26px}
+#mic-btn.session{animation:mic-pulse-gold 1.4s ease-in-out infinite}
+#mic-btn.holding{box-shadow:0 0 0 6px rgba(255,255,255,.4)}
+@keyframes mic-pulse-gold{0%,100%{box-shadow:0 0 0 0 rgba(200,169,110,.6)}50%{box-shadow:0 0 0 10px rgba(200,169,110,0)}}
+.mic-notif-dot{position:absolute;top:2px;right:2px;width:10px;height:10px;border-radius:50%;background:var(--red);border:2px solid #0c0b0a;display:none}
+.mic-notif-dot.visible{display:block}
+#mic-state-label{font-family:var(--mono);font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-sec);text-align:center}
+#mic-state-label.live{color:var(--gold-bright)}
+#mic-state-label.live::before{content:'\25cf  ';color:var(--red)}
+.lift{
+  display:flex;align-items:center;gap:8px;background:rgba(20,17,14,.7);border:1px solid var(--border);
+  color:var(--text);font-family:var(--font);font-size:14px;padding:9px 20px;border-radius:22px;cursor:pointer;
+  backdrop-filter:blur(6px);
+}
+.lift svg{width:13px;height:13px;color:var(--gold)}
+
+/* ══ Collapsible chat — small, never covers the avatar ═══════════════════ */
+.chat{
+  position:relative;z-index:2;flex:none;margin:0 12px;border:1px solid var(--border-soft);border-radius:16px 16px 0 0;
+  background:var(--glass);backdrop-filter:blur(12px);overflow:hidden;transition:max-height .3s ease;max-height:132px;
+}
+.chat.expanded{max-height:60vh}
+.chat-handle{display:flex;justify-content:center;padding:7px;cursor:pointer}
+.chat-handle .bar{width:38px;height:4px;border-radius:2px;background:var(--border)}
+#chat-area{overflow-y:auto;max-height:calc(60vh - 30px);padding:2px 14px 12px;display:flex;flex-direction:column;gap:8px}
+.chat:not(.expanded) #chat-area{max-height:96px}
+
+.msg{display:flex;flex-direction:column;max-width:84%;gap:4px}
+.msg.user{align-self:flex-end;align-items:flex-end;user-select:text;-webkit-user-select:text}
+.msg.brea{align-self:flex-start;align-items:flex-start;user-select:text;-webkit-user-select:text}
+.msg-row{display:flex;align-items:flex-end;gap:6px}
+.msg-bubble{padding:9px 13px;border-radius:14px;font-size:13.5px;line-height:1.45;word-wrap:break-word;white-space:pre-wrap}
+.msg.user .msg-bubble{background:var(--grad);color:#241b0d;border-bottom-right-radius:4px;font-weight:500}
+.msg.brea .msg-bubble{background:rgba(40,34,28,.9);border-left:2px solid var(--gold);color:var(--text);border-bottom-left-radius:4px}
+.replay-btn{background:none;border:none;color:var(--gold);cursor:pointer;font-size:13px;padding:2px;line-height:1;flex-shrink:0;opacity:.75}
+.replay-btn:hover{opacity:1}
+.replay-btn:disabled{opacity:.25;cursor:default}
+
+.typing-bubble{display:inline-flex;gap:4px;padding:10px 13px;background:rgba(40,34,28,.9);border-radius:14px;border-bottom-left-radius:4px;border-left:2px solid var(--gold)}
+.typing-dot{width:6px;height:6px;border-radius:50%;background:var(--gold);animation:typing-bounce 1.2s infinite}
+.typing-dot:nth-child(2){animation-delay:.15s}
+.typing-dot:nth-child(3){animation-delay:.3s}
+@keyframes typing-bounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+
+.audio-controls{display:flex;gap:6px;margin-top:2px}
+.audio-pill{font-size:10px;font-weight:500;color:var(--gold);background:transparent;border:1px solid var(--gold);border-radius:20px;padding:3px 10px;cursor:pointer;letter-spacing:.04em;font-family:var(--font)}
+.audio-pill:hover{background:rgba(200,169,110,.12)}
+.audio-pill:active{transform:scale(.96)}
+
+/* ══ Composer — pinned bottom ═════════════════════════════════════════════ */
+.composer{
+  position:relative;z-index:2;flex:none;display:flex;align-items:center;gap:9px;
+  padding:10px 12px calc(10px + env(safe-area-inset-bottom));background:rgba(10,9,8,.92);
+}
+.plus{flex:none;width:38px;height:38px;border-radius:50%;border:1px solid var(--border);background:transparent;color:var(--gold);font-size:20px;cursor:pointer;font-family:var(--font)}
+.field{flex:1;background:rgba(36,30,25,.85);border:1px solid var(--border-soft);border-radius:20px;padding:11px 16px;color:var(--text);font-family:var(--font);font-size:14px;outline:none;min-width:0}
+.field::placeholder{color:var(--text-sec)}
+.field:focus{border-color:var(--gold)}
+.send{flex:none;border:none;border-radius:20px;padding:11px 20px;background:var(--grad);color:#2a2010;font-weight:600;font-size:14px;cursor:pointer;font-family:var(--font)}
+.send:disabled{opacity:.5;cursor:not-allowed}
+
+/* ══ DASHBOARD overlay — lifts up, glass so the stage shows through ══════ */
+.dash{
+  position:absolute;left:0;right:0;top:0;bottom:0;z-index:20;background:var(--glass);
+  backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);border-top:1px solid var(--border);border-radius:22px 22px 0 0;
+  transform:translateY(105%);transition:transform .34s cubic-bezier(.4,0,.2,1);
+  display:flex;flex-direction:column;padding:calc(14px + env(safe-area-inset-top)) 14px 0;
+}
+.dash.up{transform:translateY(0)}
+.dash-head{flex:none;display:flex;align-items:center;justify-content:center;position:relative;padding:4px 0 12px}
+.dash-head .title{font-family:var(--mono);font-size:11px;letter-spacing:.3em;color:var(--text-sec)}
+.dash-back,.dash-x{position:absolute;top:0;width:32px;height:32px;border-radius:50%;border:1px solid var(--border-soft);background:transparent;color:var(--text);cursor:pointer;display:grid;place-items:center;font-family:var(--font)}
+.dash-back{left:0;visibility:hidden}
+.dash-x{right:0}
+.dash-body{flex:1;overflow-y:auto;padding-bottom:calc(16px + env(safe-area-inset-bottom))}
+
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.tile{background:rgba(30,26,21,.6);border:1px solid var(--border-soft);border-radius:16px;padding:20px 12px;text-align:center;cursor:pointer;transition:.15s}
+.tile:hover{border-color:var(--border);background:rgba(40,34,28,.7)}
+.tile .ic{font-size:22px;color:var(--gold);margin-bottom:8px}
+.tile .n{font-size:13px;font-weight:500;font-family:var(--font)}
+.tile .badge{display:inline-block;margin-top:5px;font-family:var(--mono);font-size:9px;color:var(--amber);border:1px solid rgba(230,180,85,.35);border-radius:999px;padding:1px 7px}
+
+.feature{display:none}
+.feature.show{display:block}
+.fh{font-family:var(--mono);font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--gold);margin:2px 0 12px}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.stat{background:rgba(30,26,21,.6);border:1px solid var(--border-soft);border-radius:13px;padding:14px}
+.stat .num{font-family:var(--disp);font-size:30px;color:var(--gold-bright);line-height:1}
+.stat .lab{font-size:11.5px;color:var(--text-sec);margin-top:6px}
+.line{display:flex;align-items:center;gap:9px;font-size:13px;padding:9px 0;border-top:1px solid var(--border-soft)}
+.line:first-of-type{border-top:none}
+.line .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.line .dot.g{background:var(--green);box-shadow:0 0 7px var(--green)}
+.line .dot.a{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+.row{display:flex;align-items:center;gap:10px;font-size:13.5px;padding:11px 0;border-top:1px solid var(--border-soft)}
+.row:first-of-type{border-top:none}
+.row .t{flex:1}
+.row .t small{display:block;color:var(--text-sec);font-size:11.5px;margin-top:2px}
+.row .dot{width:7px;height:7px;border-radius:50%;flex:none}
+.row .dot.g{background:var(--green);box-shadow:0 0 7px var(--green)}
+.row .dot.a{background:var(--amber);box-shadow:0 0 7px var(--amber)}
+.tag{font-family:var(--mono);font-size:9px;letter-spacing:.08em;text-transform:uppercase;padding:4px 9px;border-radius:999px;border:1px solid}
+.t-auto{color:var(--green);border-color:rgba(116,201,141,.4)}
+.t-app{color:var(--amber);border-color:rgba(230,180,85,.4)}
+.t-crit{color:var(--red);border-color:rgba(224,122,106,.4)}
+.diff{font-family:var(--mono);font-size:11.5px;background:rgba(0,0,0,.4);border:1px solid var(--border-soft);border-radius:10px;padding:10px 12px;margin:10px 0;white-space:pre-wrap;line-height:1.7}
+.diff .add{color:var(--green)}
+.diff .ctx{color:var(--text-sec)}
+.acts{display:flex;gap:8px;flex-wrap:wrap}
+.btn.pri{background:var(--grad);color:#2a2010;border:none}
+.btn.dng{color:var(--red);border-color:rgba(224,122,106,.4)}
+.feed{display:flex;gap:10px;padding:9px 0;border-top:1px solid var(--border-soft);font-size:13px}
+.feed:first-of-type{border-top:none}
+.feed time{font-family:var(--mono);font-size:10.5px;color:var(--text-sec);width:44px;flex:none;padding-top:2px}
+.sev{width:5px;border-radius:3px;flex:none}
+.sev.i{background:var(--green)}
+.sev.w{background:var(--amber)}
+.sev.c{background:var(--red)}
+.toggle{display:flex;align-items:center;justify-content:space-between;padding:13px 0;border-top:1px solid var(--border-soft);font-size:14px}
+.toggle:first-of-type{border-top:none}
+.sw{width:42px;height:24px;border-radius:12px;background:var(--grad);position:relative;flex:none;cursor:pointer}
+.sw::after{content:"";position:absolute;top:2px;right:2px;width:20px;height:20px;border-radius:50%;background:#fff}
+.sw.off{background:rgba(120,110,100,.4)}
+.sw.off::after{right:auto;left:2px}
+.sp{display:flex;gap:10px;padding:10px 0;border-top:1px solid var(--border-soft)}
+.sp:first-of-type{border-top:none}
+.sp .ic{flex:none;width:30px;height:30px;border-radius:9px;background:rgba(40,34,28,.7);display:grid;place-items:center;color:var(--gold)}
+.sp .h{font-size:13.5px;font-weight:500}
+.sp .d{font-size:12px;color:var(--text-sec);margin-top:2px}
+
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── STAGE — persistent avatar background, never collapses ─────────── -->
+  <div class="stage" id="stage">
+    <div class="stage-wordmark-wrap">
+      <span class="brea-name">BREA</span>
+      <span class="stage-cap">Streaming avatar — coming soon</span>
+    </div>
+  </div>
+
+  <!-- ── Topbar ──────────────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="status" id="status-pill"><span class="dot" id="status-dot"></span><span id="status-text">—</span></div>
+    <div class="tagline">Factory</div>
+    <div class="quicklinks">
+      <a href="#" class="qlink" id="link-brea3">Brea 3 ↗</a>
+      <a href="#" class="qlink" id="link-boss">BOSS ↗</a>
+    </div>
+  </header>
+
+  <!-- ── Notification toast ──────────────────────────────────────────── -->
+  <div id="notif-toast" onclick="dismissToast()"></div>
+
+  <!-- ── Live approval / critical card (real, floats over stage) ──────── -->
+  <div id="approval-card">
+    <div class="ap-head">
+      <span class="ap-tag" id="ap-tag">Approval Required</span>
+      <span class="ap-name" id="ap-name">—</span>
+    </div>
+    <div class="ap-desc" id="ap-desc">—</div>
+    <textarea id="ap-note" class="ap-note" placeholder="Required: written reason for this critical task (min 20 chars)…"></textarea>
+    <div class="ap-actions">
+      <button class="btn btn-approve" onclick="doApprove()">Approve</button>
+      <button class="btn btn-reject" onclick="doReject()">Reject</button>
+    </div>
+  </div>
+
+  <!-- ── Center controls: mic + Dashboard lift, low on the stage ──────── -->
+  <div class="center">
+    <button id="stop-session-btn" onclick="stopSession()" aria-label="Stop voice session">Stop</button>
+    <button id="mic-btn" aria-label="Speak">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0"/><line x1="12" y1="18" x2="12" y2="21"/></svg>
+      <span class="mic-notif-dot" id="mic-notif-dot"></span>
+    </button>
+    <div id="mic-state-label">Tap to talk</div>
+    <button class="lift" id="openDash" onclick="openDashboard()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><polyline points="6 15 12 9 18 15"/></svg>
+      Dashboard
+    </button>
+  </div>
+
+  <!-- ── Small collapsible chat — never covers the avatar ─────────────── -->
+  <div class="chat" id="chat">
+    <div class="chat-handle" id="chatHandle"><div class="bar"></div></div>
+    <div id="chat-area"></div>
+  </div>
+
+  <!-- ── Composer — pinned bottom ──────────────────────────────────────── -->
+  <div class="composer">
+    <button id="plus-btn" class="plus" aria-label="More" onclick="onPlusClick()">+</button>
+    <input id="chat-input" class="field" type="text" autocomplete="off" placeholder="Describe a build, or ask Brea…" onkeydown="chatInputKeydown(event)">
+    <button id="chat-send" class="send" onclick="sendChatMessage()">Send</button>
+  </div>
+
+  <!-- ── DASHBOARD overlay — lifts up, tile grid ──────────────────────── -->
+  <div class="dash" id="dash">
+    <div class="dash-head">
+      <button class="dash-back" id="dashBack">←</button>
+      <span class="title">DASHBOARD</span>
+      <button class="dash-x" id="dashX">✕</button>
+    </div>
+    <div class="dash-body">
+      <!-- tile grid (dashboard home) -->
+      <div class="grid" id="grid">
+        <div class="tile" data-f="overview"><div class="ic">◈</div><div class="n">Overview</div></div>
+        <div class="tile" data-f="queue"><div class="ic">≡</div><div class="n">Task Queue</div><span class="badge">2</span></div>
+        <div class="tile" data-f="review"><div class="ic">✓</div><div class="n">Review</div><span class="badge">1</span></div>
+        <div class="tile" data-f="activity"><div class="ic">◧</div><div class="n">Activity</div></div>
+        <div class="tile" data-f="tenants"><div class="ic">⌂</div><div class="n">Tenants</div></div>
+        <div class="tile" data-f="preview"><div class="ic">▤</div><div class="n">Live Preview</div></div>
+        <div class="tile" data-f="screen"><div class="ic">👁</div><div class="n">Screen Presence</div></div>
+        <div class="tile" data-f="settings"><div class="ic">⚙</div><div class="n">Settings</div></div>
+      </div>
+
+      <!-- feature panels — VISUAL ONLY / mock content this build, real feeds wire in next build -->
+      <div class="feature" id="overview">
+        <div class="fh">Overview</div>
+        <div class="stats">
+          <div class="stat"><div class="num">34</div><div class="lab">Active capabilities</div></div>
+          <div class="stat"><div class="num">6</div><div class="lab">Pending build</div></div>
+          <div class="stat"><div class="num">2</div><div class="lab">Tasks in queue</div></div>
+          <div class="stat"><div class="num">1</div><div class="lab">Open issue</div></div>
+        </div>
+        <div class="line" style="margin-top:6px"><span class="dot g"></span> All services healthy · mock data</div>
+        <div class="line"><span class="dot a"></span> Live feeds wire in next build</div>
+      </div>
+
+      <div class="feature" id="queue">
+        <div class="fh">Task Queue</div>
+        <div class="row"><div class="t">Re-skin dashboard to Brea look<small>CSS · index.html</small></div><span class="tag t-auto">Auto</span></div>
+        <div class="row"><div class="t">Add CONVERSATION_LOG read<small>Airtable · Factory base</small></div><span class="tag t-app">Approve</span></div>
+        <div class="row"><div class="t">Rotate exposed API keys<small>Touches key files</small></div><span class="tag t-crit">Critical</span></div>
+      </div>
+
+      <div class="feature" id="review">
+        <div class="fh">Review · mock — real approvals surface as a live card over the stage</div>
+        <div class="row" style="border:none;padding-top:0"><div class="t">Add empire health route<small>brea_factory.py</small></div><span class="tag t-app">Approve</span></div>
+        <div class="diff"><span class="ctx">@@ brea_factory.py @@</span>
+<span class="add">+ @app.route('/api/empire/status')</span>
+<span class="add">+ def empire_status():</span>
+<span class="add">+     return jsonify(check_all_services())</span></div>
+        <div class="acts"><button class="btn pri" disabled>Approve</button><button class="btn" disabled>Edit</button><button class="btn dng" disabled>Reject</button></div>
+      </div>
+
+      <div class="feature" id="activity">
+        <div class="fh">Activity</div>
+        <div class="feed"><time>12:04</time><div class="sev i"></div><div>Auto task complete — dashboard re-skinned</div></div>
+        <div class="feed"><time>11:58</time><div class="sev w"></div><div>Factory voice 400 on 2nd turn — flagged</div></div>
+        <div class="feed"><time>11:40</time><div class="sev i"></div><div>Spec queued: "Add tenant health grid"</div></div>
+        <div class="feed"><time>11:22</time><div class="sev c"></div><div>Same error 3× — Pattern_Flag raised</div></div>
+      </div>
+
+      <div class="feature" id="tenants">
+        <div class="fh">Tenant Health</div>
+        <div class="row"><div class="t">Boujie Girl<small>Beauty preset</small></div><span class="dot g"></span></div>
+        <div class="row"><div class="t">Demo Spa<small>Medical Spa</small></div><span class="dot g"></span></div>
+        <div class="row"><div class="t">Onboarding #3<small>Provisioning</small></div><span class="dot a"></span></div>
+      </div>
+
+      <div class="feature" id="preview">
+        <div class="fh">Live Preview</div>
+        <div class="row" style="border:none">Renders the latest completed build here.</div>
+      </div>
+
+      <div class="feature" id="screen">
+        <div class="fh">Screen Presence <span class="tag t-app" style="margin-left:6px">Phase 1 · not built</span></div>
+        <div class="sp"><div class="ic">👁</div><div><div class="h">Visual only</div><div class="d">Brea watches, narrates, points with a gold marker. You click.</div></div></div>
+        <div class="sp"><div class="ic">✋</div><div><div class="h">Assisted control</div><div class="d">Hand her mouse/keyboard for one session. Drops when you say done.</div></div></div>
+        <div class="sp"><div class="ic">⏻</div><div><div class="h">Auto-deactivation</div><div class="d">Session end, inactivity, or a word instantly cuts control.</div></div></div>
+      </div>
+
+      <div class="feature" id="settings">
+        <div class="fh">Settings · Voice behavior</div>
+        <div class="toggle">Auto-playback <span class="sw"></span></div>
+        <div class="toggle">"Hey Brea" wake word <span class="sw"></span></div>
+        <div class="fh" style="margin-top:16px">Build behavior</div>
+        <div class="toggle">Auto-run Auto-tier tasks <span class="sw"></span></div>
+        <div class="toggle">Deep-think mode (Opus) for specs <span class="sw off"></span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+'use strict';
+
+const socket = io();
+
+// ── State ──────────────────────────────────────────────────────────────────
+let audioCtx        = null;
+let currentSource    = null;
+let isPaused         = false;
+let currentBreaMsgEl = null;
+let _audioChunks     = [];
+
+let mediaRecorder    = null;
+let recMime          = '';     // exact MediaRecorder mimeType, sent to the server with each chunk
+let micMode          = 'idle'; // idle | session | holding
+let _silenceTimer    = null;
+let _holdTimer       = null;
+let _holdActive      = false;
+let _handsFree       = false;
+const SILENCE_TIMEOUT = 1500;
+const HOLD_THRESHOLD  = 350;
+
+let _specMessages    = [];
+let _specActive      = false;
+const BUILD_INTENT_RE = /\b(build|create|add|implement|develop|set ?up|integrate|spec out|new (feature|capability)|kick off)\b/i;
+
+let _pendingNotification = null;
+let _breaBusy = false;
+let _currentTask = null;
+
+// ── Quick links — Brea 3 / BOSS launch (front-end only, external tabs) ────
+const REDIRECT_URLS = { brea3: 'https://brea3.ngrok.app', boss: 'https://theboss.ngrok.app' };
+document.getElementById('link-brea3').onclick = e => { e.preventDefault(); window.open(REDIRECT_URLS.brea3, '_blank'); };
+document.getElementById('link-boss').onclick  = e => { e.preventDefault(); window.open(REDIRECT_URLS.boss,  '_blank'); };
+
+// ── Chat helpers ──────────────────────────────────────────────────────────
+function addChatMessage(text, speaker) {
+  const area = document.getElementById('chat-area');
+  const div  = document.createElement('div');
+  div.className = `msg ${speaker}`;
+  const row  = document.createElement('div');
+  row.className = 'msg-row';
+  const bubble = document.createElement('div');
+  bubble.className = 'msg-bubble';
+  bubble.textContent = text;
+  row.appendChild(bubble);
+  if (speaker === 'brea') {
+    const replay = document.createElement('button');
+    replay.className = 'replay-btn';
+    replay.innerHTML  = '&#9658;';
+    replay.disabled   = true;
+    replay.title      = 'Replay';
+    replay.onclick    = () => replayMessage(div);
+    row.appendChild(replay);
+  }
+  div.appendChild(row);
+  area.appendChild(div);
+  scrollChat();
+  return div;
+}
+
+function showTypingBubble() {
+  removeTypingBubble();
+  const area = document.getElementById('chat-area');
+  const div  = document.createElement('div');
+  div.className = 'msg brea';
+  div.id = 'typing-bubble';
+  div.innerHTML = `<div class="typing-bubble">
+    <span class="typing-dot"></span><span class="typing-dot"></span><span class="typing-dot"></span>
+  </div>`;
+  area.appendChild(div);
+  scrollChat();
+}
+
+function removeTypingBubble() {
+  const el = document.getElementById('typing-bubble');
+  if (el) el.remove();
+}
+
+function scrollChat() {
+  const area = document.getElementById('chat-area');
+  area.scrollTop = area.scrollHeight;
+}
+
+
+// ── Audio playback (single-buffer, accumulated across audio_chunk events) ──
+function getAudioCtx() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  return audioCtx;
+}
+
+function base64ToArrayBuffer(b64) {
+  const bin = atob(b64);
+  const buf = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+  return buf.buffer;
+}
+
+function arrayBufferToBase64(buf) {
+  const bytes = new Uint8Array(buf);
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
+}
+
+function concatBuffers(buffers) {
+  const total = buffers.reduce((s, b) => s + b.byteLength, 0);
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const b of buffers) { out.set(new Uint8Array(b), offset); offset += b.byteLength; }
+  return out.buffer;
+}
+
+function stopCurrentAudio() {
+  if (currentSource) {
+    try { currentSource.onended = null; currentSource.stop(); } catch (e) {}
+    currentSource = null;
+  }
+}
+
+async function playAudioBuffer(buf, msgEl) {
+  try {
+    const ctx     = getAudioCtx();
+    if (ctx.state === 'suspended') await ctx.resume();
+    const decoded = await ctx.decodeAudioData(buf);
+    stopCurrentAudio();
+    const src   = ctx.createBufferSource();
+    src.buffer  = decoded;
+    src.connect(ctx.destination);
+    src.onended = () => {
+      if (currentSource === src) {
+        currentSource = null;
+        finishBreaTurn(msgEl);
+      }
+    };
+    currentSource    = src;
+    isPaused         = false;
+    currentBreaMsgEl = msgEl;
+    src.start();
+    if (msgEl) showAudioControls(msgEl);
+  } catch (e) {
+    console.warn('Audio decode error:', e);
+    finishBreaTurn(msgEl);
+  }
+}
+
+function showAudioControls(msgEl) {
+  hideAudioControls();
+  if (!msgEl) return;
+  const ctrl = document.createElement('div');
+  ctrl.className = 'audio-controls';
+  ctrl.id = 'audio-controls';
+
+  const pauseBtn = document.createElement('button');
+  pauseBtn.className = 'audio-pill';
+  pauseBtn.textContent = 'Pause';
+  pauseBtn.onclick = () => {
+    pauseAudio();
+    pauseBtn.textContent = isPaused ? 'Resume' : 'Pause';
+  };
+
+  const stopBtn = document.createElement('button');
+  stopBtn.className = 'audio-pill';
+  stopBtn.textContent = 'Stop';
+  stopBtn.onclick = stopAudio;
+
+  ctrl.appendChild(pauseBtn);
+  ctrl.appendChild(stopBtn);
+  msgEl.appendChild(ctrl);
+  scrollChat();
+}
+
+function hideAudioControls() {
+  const el = document.getElementById('audio-controls');
+  if (el) el.remove();
+}
+
+function finishBreaTurn(msgEl) {
+  hideAudioControls();
+  if (currentBreaMsgEl === msgEl) currentBreaMsgEl = null;
+  tryShowNotification();
+  if (_handsFree) openMicSession();
+}
+
+function pauseAudio() {
+  const ctx = getAudioCtx();
+  if (ctx.state === 'running')        { ctx.suspend(); isPaused = true;  }
+  else if (ctx.state === 'suspended') { ctx.resume();  isPaused = false; }
+}
+
+function stopAudio() {
+  stopCurrentAudio();
+  const ctx = getAudioCtx();
+  if (ctx.state === 'suspended') ctx.resume();
+  isPaused = false;
+  finishBreaTurn(currentBreaMsgEl);
+  socket.emit('voice_interrupt');
+  openMicSession();
+}
+
+function replayMessage(div) {
+  const b64 = div.dataset.audio;
+  if (!b64) return;
+  playAudioBuffer(base64ToArrayBuffer(b64), div);
+}
+
+
+// ── Mic — tap = voice session, hold = voice note ───────────────────────────
+const micBtn = document.getElementById('mic-btn');
+
+// Visible state label — mic must never be ambiguous about whether it's live.
+function setMicLabel(text, isLive) {
+  const el = document.getElementById('mic-state-label');
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle('live', !!isLive);
+}
+
+micBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (micMode === 'session') return;
+  _holdTimer = setTimeout(() => {
+    _holdActive = true;
+    micMode = 'holding';
+    _handsFree = false;
+    micBtn.classList.add('holding');
+    startRecording();
+    setMicLabel('● Listening…', true);
+    updateStopButtonVisibility();
+  }, HOLD_THRESHOLD);
+});
+
+micBtn.addEventListener('pointerup', e => {
+  e.preventDefault();
+  onMicRelease();
+});
+
+micBtn.addEventListener('pointercancel', onMicRelease);
+micBtn.addEventListener('pointerleave', e => { if (_holdActive) onMicRelease(e); });
+
+function onMicRelease() {
+  if (_holdActive) {
+    clearTimeout(_holdTimer);
+    _holdActive = false;
+    micMode = 'idle';
+    micBtn.classList.remove('holding');
+    stopRecording();
+    setMicLabel('Tap to talk', false);
+    updateStopButtonVisibility();
+    return;
+  }
+  clearTimeout(_holdTimer);
+  if (micMode === 'session') {
+    micMode = 'idle';
+    micBtn.classList.remove('session');
+    stopRecording();
+    setMicLabel('Tap to talk', false);
+  } else {
+    micMode = 'session';
+    micBtn.classList.add('session');
+    _handsFree = true;
+    startRecording();
+    setMicLabel('● Listening…', true);
+  }
+  updateStopButtonVisibility();
+}
+
+function openMicSession() {
+  if (micMode !== 'idle') return;
+  micMode = 'session';
+  micBtn.classList.add('session');
+  _handsFree = true;
+  startRecording();
+  setMicLabel('● Listening…', true);
+  updateStopButtonVisibility();
+}
+
+function updateStopButtonVisibility() {
+  const btn = document.getElementById('stop-session-btn');
+  btn.classList.toggle('visible', micMode !== 'idle' || _handsFree);
+}
+
+function stopSession() {
+  _handsFree = false;
+  clearTimeout(_holdTimer);
+  _holdActive = false;
+  if (micMode !== 'idle') {
+    micMode = 'idle';
+    micBtn.classList.remove('session', 'holding');
+    if (_silenceTimer) { clearTimeout(_silenceTimer); _silenceTimer = null; }
+    if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+      mediaRecorder.stop();
+      mediaRecorder.stream.getTracks().forEach(t => t.stop());
+    }
+  }
+  socket.emit('voice_interrupt');
+  stopCurrentAudio();
+  hideAudioControls();
+  removeTypingBubble();
+  _breaBusy = false;
+  setMicLabel('Tap to talk', false);
+  updateStopButtonVisibility();
+}
+
+async function startRecording() {
+  try {
+    const stream   = await navigator.mediaDevices.getUserMedia({audio: true});
+    const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+      ? 'audio/webm;codecs=opus' : 'audio/webm';
+    mediaRecorder = new MediaRecorder(stream, {mimeType});
+    recMime = mediaRecorder.mimeType || mimeType;
+    mediaRecorder.ondataavailable = onAudioSlice;
+    mediaRecorder.start(250);
+    showTypingBubble();
+  } catch (e) {
+    alert('Microphone access denied: ' + e.message);
+    micMode = 'idle';
+    micBtn.classList.remove('session', 'holding');
+    _holdActive = false;
+    setMicLabel('Tap to talk', false);
+  }
+}
+
+function onAudioSlice(e) {
+  if (e.data.size === 0) return;
+  if (micMode === 'session') {
+    if (_silenceTimer) clearTimeout(_silenceTimer);
+    _silenceTimer = setTimeout(() => {
+      if (micMode === 'session') {
+        micMode = 'idle';
+        micBtn.classList.remove('session');
+        stopRecording();
+        setMicLabel('Tap to talk', false);
+        updateStopButtonVisibility();
+      }
+    }, SILENCE_TIMEOUT);
+  }
+  e.data.arrayBuffer().then(buf => {
+    const bytes = new Uint8Array(buf);
+    let binary  = '';
+    for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+    // Send the exact mimetype MediaRecorder is using — the server used to guess
+    // across 4 content-types, which was the source of spurious Deepgram 400s.
+    socket.emit('audio_chunk', {chunk: btoa(binary), mimeType: recMime});
+  });
+}
+
+function stopRecording() {
+  if (_silenceTimer) { clearTimeout(_silenceTimer); _silenceTimer = null; }
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    mediaRecorder.stop();
+    mediaRecorder.stream.getTracks().forEach(t => t.stop());
+  }
+  socket.emit('voice_stop');
+}
+
+
+// ── Text input — routes to /respond (question) or /api/spec (build) ───────
+function chatInputKeydown(e) {
+  if (e.key === 'Enter') { e.preventDefault(); sendChatMessage(); }
+}
+
+function onPlusClick() {
+  // placeholder — reserved for attachments / quick actions
+}
+
+async function sendChatMessage() {
+  const input = document.getElementById('chat-input');
+  const btn   = document.getElementById('chat-send');
+  const text  = (input.value || '').trim();
+  if (!text) return;
+  input.value = '';
+  btn.disabled = true;
+
+  addChatMessage(text, 'user');
+  showTypingBubble();
+  _breaBusy = true;
+
+  try {
+    if (_specActive || BUILD_INTENT_RE.test(text)) {
+      await sendToSpec(text);
+    } else {
+      await sendToRespond(text);
+    }
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function sendToRespond(text) {
+  try {
+    const r = await fetch('/respond', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({transcript: text, source: 'voice'}),
+    });
+    if (!r.ok) {
+      const e = await r.json().catch(() => ({}));
+      removeTypingBubble();
+      addChatMessage('Error: ' + (e.error || r.statusText), 'brea');
+      _breaBusy = false; tryShowNotification();
+    }
+  } catch (e) {
+    removeTypingBubble();
+    addChatMessage('Request failed: ' + e.message, 'brea');
+    _breaBusy = false; tryShowNotification();
+  }
+}
+
+async function sendToSpec(text) {
+  _specActive = true;
+  _specMessages.push({role: 'user', content: text});
+
+  try {
+    const r = await fetch('/api/spec', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({messages: _specMessages}),
+    });
+    const data = await r.json();
+    removeTypingBubble();
+
+    if (!r.ok || data.error) {
+      addChatMessage('Error: ' + (data.error || 'Server error'), 'brea');
+      _specMessages.pop();
+      if (!_specMessages.length) _specActive = false;
+      _breaBusy = false; tryShowNotification();
+      return;
+    }
+
+    _specMessages.push({role: 'assistant', content: data.reply});
+    currentBreaMsgEl = addChatMessage(data.reply, 'brea');
+
+    fetch('/respond', {
+      method:  'POST',
+      headers: {'Content-Type': 'application/json'},
+      body:    JSON.stringify({text: data.reply, source: 'spec'}),
+    }).catch(() => {});
+
+    if (data.ready) {
+      const bits = [];
+      if (data.tasks_queued_names && data.tasks_queued_names.length) {
+        bits.push(`Queued: ${data.tasks_queued_names.join(', ')}.`);
+      }
+      if (data.tasks_failed && data.tasks_failed.length) {
+        bits.push(`Failed: ${data.tasks_failed.map(f => f.task).join(', ')}.`);
+      }
+      if (bits.length) addChatMessage(bits.join(' '), 'brea');
+      _specMessages = [];
+      _specActive   = false;
+    }
+    _breaBusy = false; tryShowNotification();
+  } catch (e) {
+    removeTypingBubble();
+    addChatMessage('Request failed: ' + e.message, 'brea');
+    _specMessages.pop();
+    if (!_specMessages.length) _specActive = false;
+    _breaBusy = false; tryShowNotification();
+  }
+}
+
+
+// ── Notifications ───────────────────────────────────────────────────────────
+socket.on('brea_notification', data => {
+  const text = (data && (data.message || data.text)) || '';
+  if (!text) return;
+  _pendingNotification = text;
+  document.getElementById('mic-notif-dot').classList.add('visible');
+  tryShowNotification();
+});
+
+function tryShowNotification() {
+  if (!_pendingNotification || _breaBusy || currentSource) return;
+  const toast = document.getElementById('notif-toast');
+  toast.textContent = _pendingNotification;
+  toast.classList.add('visible');
+}
+
+function dismissToast() {
+  document.getElementById('notif-toast').classList.remove('visible');
+  document.getElementById('mic-notif-dot').classList.remove('visible');
+  _pendingNotification = null;
+}
+
+
+// ── Socket events — voice / chat ──────────────────────────────────────────
+socket.on('transcript_update', ({text, speaker, source}) => {
+  if (source === 'spec') return;
+  if (speaker === 'user') { addChatMessage(text, 'user'); return; }
+  removeTypingBubble();
+  currentBreaMsgEl = addChatMessage(text, 'brea');
+  _breaBusy = false;
+  tryShowNotification();
+});
+
+socket.on('voice_error', ({error}) => {
+  console.error('[VOICE ERROR]', error);
+  removeTypingBubble();
+  micMode = 'idle';
+  micBtn.classList.remove('session', 'holding');
+  _breaBusy = false;
+  setMicLabel('Tap to talk', false);
+  updateStopButtonVisibility();
+});
+
+socket.on('voice_interrupted', () => {
+  removeTypingBubble();
+  _audioChunks = [];
+  _breaBusy = false;
+});
+
+socket.on('audio_chunk', ({data, done, error}) => {
+  if (error) console.warn('[AUDIO]', error);
+  if (data) _audioChunks.push(base64ToArrayBuffer(data));
+  if (!done) return;
+
+  const buf = concatBuffers(_audioChunks);
+  _audioChunks = [];
+
+  if (!buf.byteLength) { finishBreaTurn(currentBreaMsgEl); return; }
+  if (currentBreaMsgEl) {
+    currentBreaMsgEl.dataset.audio = arrayBufferToBase64(buf);
+    const replayBtn = currentBreaMsgEl.querySelector('.replay-btn');
+    if (replayBtn) replayBtn.disabled = false;
+  }
+  playAudioBuffer(buf.slice(0), currentBreaMsgEl);
+});
+
+
+// ── Chat collapse/expand ────────────────────────────────────────────────────
+document.getElementById('chatHandle').onclick = () =>
+  document.getElementById('chat').classList.toggle('expanded');
+
+
+// ── Dashboard — lift up / tile grid / feature panels ───────────────────────
+const dash  = document.getElementById('dash');
+const grid  = document.getElementById('grid');
+const back  = document.getElementById('dashBack');
+const feats = [...document.querySelectorAll('.feature')];
+
+function openDashboard()  { dash.classList.add('up'); }
+function closeDashboard() { dash.classList.remove('up'); showGrid(); }
+function showGrid() {
+  grid.style.display = 'grid';
+  feats.forEach(f => f.classList.remove('show'));
+  back.style.visibility = 'hidden';
+}
+document.getElementById('dashX').onclick = closeDashboard;
+back.onclick = showGrid;
+grid.addEventListener('click', e => {
+  const t = e.target.closest('.tile');
+  if (!t) return;
+  grid.style.display = 'none';
+  feats.forEach(f => f.classList.remove('show'));
+  document.getElementById(t.dataset.f).classList.add('show');
+  back.style.visibility = 'visible';
+});
+
+// Settings toggles — visual only, no persistence yet
+document.querySelectorAll('.sw').forEach(s => s.onclick = () => s.classList.toggle('off'));
+
+
+// ── Approval / Critical card — REAL, driven by the live orchestrator ──────
+function showApprovalCard(data, isCritical) {
+  _currentTask = {...data, isCritical};
+  document.getElementById('ap-name').textContent = data.task_name || '—';
+  document.getElementById('ap-desc').textContent =
+    data.description || data.instruction || 'No description provided.';
+  const tag = document.getElementById('ap-tag');
+  tag.textContent = isCritical ? 'Critical — Confirm Required' : 'Approval Required';
+  tag.style.background = isCritical ? 'var(--red)' : 'var(--gold)';
+  document.getElementById('ap-note').style.display = isCritical ? 'block' : 'none';
+  document.getElementById('approval-card').classList.add('visible');
+}
+
+function hideApprovalCard() {
+  _currentTask = null;
+  document.getElementById('approval-card').classList.remove('visible');
+  document.getElementById('ap-note').value = '';
+}
+
+async function doApprove() {
+  if (!_currentTask) return;
+  const id = _currentTask.task_id;
+  try {
+    if (_currentTask.isCritical) {
+      const note = document.getElementById('ap-note').value.trim();
+      if (note.length < 20) { alert('Critical tasks require a note of at least 20 characters.'); return; }
+      const r = await fetch(`/api/confirm/${id}`, {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({note}),
+      });
+      if (!r.ok) { const e = await r.json(); alert(`Confirm failed: ${e.error || 'error'}`); return; }
+    } else {
+      await fetch(`/api/approve/${id}`, {method: 'POST'});
+    }
+    hideApprovalCard();
+  } catch (e) { alert(`Action failed: ${e.message}`); }
+}
+
+async function doReject() {
+  if (!_currentTask) return;
+  try {
+    await fetch(`/api/reject/${_currentTask.task_id}`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reason: 'Rejected via dashboard'}),
+    });
+    hideApprovalCard();
+  } catch (e) { alert(`Reject failed: ${e.message}`); }
+}
+
+
+// ── Data loading — kept for the next build's live-feed wiring ─────────────
+async function get(path) {
+  const r = await fetch(path);
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+
+function esc(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+async function loadConversationHistory() {
+  try {
+    const history = await get('/api/conversation-history');
+    if (!Array.isArray(history) || !history.length) return;
+    history.slice().reverse().forEach(item => {
+      if (item.user) addChatMessage(item.user, 'user');
+      if (item.brea) addChatMessage(item.brea, 'brea');
+    });
+  } catch {}
+}
+
+async function loadHealth() {
+  try {
+    const d = await get('/api/health');
+    const online = ['brea3', 'boss', 'factory'].every(k => d[k] && d[k].online);
+    document.getElementById('status-dot').className = 'dot' + (online ? ' online' : '');
+    document.getElementById('status-text').textContent =
+      new Date().toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'});
+  } catch {}
+}
+
+
+// ── Factory bridge events — keep the live approval flow wired ─────────────
+socket.on('approve_required',  data => showApprovalCard(data, false));
+socket.on('critical_required', data => showApprovalCard(data, true));
+socket.on('task_complete',  () => loadHealth());
+socket.on('task_failed',    () => loadHealth());
+socket.on('task_rejected',  () => hideApprovalCard());
+socket.on('factory_status', () => loadHealth());
+socket.on('health_critical',() => loadHealth());
+socket.on('health_warning', () => loadHealth());
+
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+loadConversationHistory();
+loadHealth();
+setInterval(loadHealth, 30_000);
+</script>
+</body>
+</html>
