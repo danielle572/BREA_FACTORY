@@ -902,7 +902,12 @@ if __name__ == "__main__":
     _check_conversation_log()
     threading.Thread(target=_connect_bridge, daemon=True, name="factory-bridge").start()
     if Observer:
-        _start_watchdog()
+        # WATCHDOG DISABLED 2026-08-03 — root cause of "alive but deaf" hangs.
+        # os.execv restart fires on spurious Windows on_modified events for app.py,
+        # restarting the server mid-voice-turn and severing Fish TTS audio.
+        # Do NOT re-enable. Use an explicit manual restart for code changes.
+        # _start_watchdog()
+        print("  [WATCHDOG] Disabled by design (see comment) — auto-restart off.")
     else:
         print("  [WATCHDOG] watchdog package not installed — auto-restart disabled (pip install watchdog)")
     socketio.run(app, host="0.0.0.0", port=PORT, debug=False, use_reloader=False)

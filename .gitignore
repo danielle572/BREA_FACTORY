@@ -25,3 +25,6 @@ ngrok
 *.mp3
 audio_tmp/
 tmp_audio/
+
+# Stale local backups — never commit
+app_backup_*.py
