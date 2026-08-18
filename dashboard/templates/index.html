@@ -384,10 +384,6 @@ body{
 
       <div class="feature" id="activity">
         <div class="fh">Activity</div>
-        <div class="feed"><time>12:04</time><div class="sev i"></div><div>Auto task complete — dashboard re-skinned</div></div>
-        <div class="feed"><time>11:58</time><div class="sev w"></div><div>Factory voice 400 on 2nd turn — flagged</div></div>
-        <div class="feed"><time>11:40</time><div class="sev i"></div><div>Spec queued: "Add tenant health grid"</div></div>
-        <div class="feed"><time>11:22</time><div class="sev c"></div><div>Same error 3× — Pattern_Flag raised</div></div>
       </div>
 
       <div class="feature" id="tenants">
@@ -1014,6 +1010,7 @@ grid.addEventListener('click', e => {
   feats.forEach(f => f.classList.remove('show'));
   document.getElementById(t.dataset.f).classList.add('show');
   back.style.visibility = 'visible';
+  if (t.dataset.f === 'activity') loadActivity();
 });
 
 // Settings toggles — visual only, no persistence yet
@@ -1116,10 +1113,33 @@ socket.on('health_critical',() => loadHealth());
 socket.on('health_warning', () => loadHealth());
 
 
+async function loadActivity() {
+  try {
+    const res  = await fetch('/api/activity');
+    const rows = await res.json();
+    if (!Array.isArray(rows)) return;
+    const panel = document.getElementById('activity');
+    const fh    = panel.querySelector('.fh');
+    const feed  = rows.map(r => {
+      const sevClass = r.type === 'Critical' ? 'c' : (r.type === 'Warning' ? 'w' : 'i');
+      const time = r.created ? new Date(r.created).toLocaleTimeString([], {hour: '2-digit', minute: '2-digit'}) : '—';
+      return `<div class="feed"><time>${time}</time><div class="sev ${sevClass}"></div><div>${r.message || r.name}</div></div>`;
+    }).join('');
+    panel.innerHTML = '';
+    panel.appendChild(fh);
+    panel.insertAdjacentHTML('beforeend', feed || '<div class="row" style="border:none">No recent activity.</div>');
+  } catch (e) {
+    console.error('loadActivity failed', e);
+  }
+}
+
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 loadConversationHistory();
 loadHealth();
 setInterval(loadHealth, 30_000);
+loadActivity();
+setInterval(loadActivity, 30_000);
 </script>
 </body>
 </html>

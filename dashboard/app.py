@@ -139,14 +139,33 @@ _interrupt_global = {"set": False}  # interrupt flag for the broadcast /respond 
 SESSION_ID = str(uuid.uuid4())
 
 
-def at_get(table, formula="", max_records=100):
+def at_get(table, formula="", max_records=100, fetch_all=False):
     url    = f"https://api.airtable.com/v0/{FACTORY_BASE_ID}/{table}"
-    params = {"maxRecords": max_records}
-    if formula:
-        params["filterByFormula"] = formula
-    resp = requests.get(url, headers=AT_HEADERS, params=params, timeout=10)
-    resp.raise_for_status()
-    return resp.json().get("records", [])
+    if not fetch_all:
+        params = {"maxRecords": max_records}
+        if formula:
+            params["filterByFormula"] = formula
+        resp = requests.get(url, headers=AT_HEADERS, params=params, timeout=10)
+        resp.raise_for_status()
+        return resp.json().get("records", [])
+
+    # fetch_all: page through offset cursor until exhausted, capped so a
+    # mistakenly-wide formula can never turn into a full-table scan.
+    records, offset, PAGE_CAP = [], None, 5000
+    while len(records) < PAGE_CAP:
+        params = {"pageSize": 100}
+        if formula:
+            params["filterByFormula"] = formula
+        if offset:
+            params["offset"] = offset
+        resp = requests.get(url, headers=AT_HEADERS, params=params, timeout=10)
+        resp.raise_for_status()
+        data = resp.json()
+        records.extend(data.get("records", []))
+        offset = data.get("offset")
+        if not offset:
+            break
+    return records
 
 
 def at_create(table, fields):
@@ -259,7 +278,11 @@ def tenants():
 @app.route("/api/activity")
 def activity():
     try:
-        records = at_get("MASTER_DIAGNOSTIC_LOG", max_records=100)
+        records = at_get(
+            "MASTER_DIAGNOSTIC_LOG",
+            formula="IS_AFTER(CREATED_TIME(), DATEADD(NOW(), -1, 'days'))",
+            fetch_all=True,
+        )
         records.sort(key=lambda r: r.get("createdTime", ""), reverse=True)
         return jsonify([
             {
