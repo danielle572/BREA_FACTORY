@@ -310,7 +310,7 @@ def logs():
 @app.route("/api/tasks")
 def tasks():
     try:
-        records = at_get("TASK_QUEUE")
+        records = at_get("TASK_QUEUE", formula="OR({Status}='Queued', {Status}='In Progress')")
         records.sort(key=lambda r: r.get("createdTime", ""), reverse=True)
         return jsonify([
             {

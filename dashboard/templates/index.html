@@ -343,7 +343,7 @@ body{
       <!-- tile grid (dashboard home) -->
       <div class="grid" id="grid">
         <div class="tile" data-f="overview"><div class="ic">◈</div><div class="n">Overview</div></div>
-        <div class="tile" data-f="queue"><div class="ic">≡</div><div class="n">Task Queue</div><span class="badge">2</span></div>
+        <div class="tile" data-f="queue"><div class="ic">≡</div><div class="n">Task Queue</div><span class="badge" id="queueBadge" hidden>0</span></div>
         <div class="tile" data-f="review"><div class="ic">✓</div><div class="n">Review</div><span class="badge">1</span></div>
         <div class="tile" data-f="activity"><div class="ic">◧</div><div class="n">Activity</div></div>
         <div class="tile" data-f="tenants"><div class="ic">⌂</div><div class="n">Tenants</div></div>
@@ -367,9 +367,6 @@ body{
 
       <div class="feature" id="queue">
         <div class="fh">Task Queue</div>
-        <div class="row"><div class="t">Re-skin dashboard to Brea look<small>CSS · index.html</small></div><span class="tag t-auto">Auto</span></div>
-        <div class="row"><div class="t">Add CONVERSATION_LOG read<small>Airtable · Factory base</small></div><span class="tag t-app">Approve</span></div>
-        <div class="row"><div class="t">Rotate exposed API keys<small>Touches key files</small></div><span class="tag t-crit">Critical</span></div>
       </div>
 
       <div class="feature" id="review">
@@ -1011,6 +1008,7 @@ grid.addEventListener('click', e => {
   document.getElementById(t.dataset.f).classList.add('show');
   back.style.visibility = 'visible';
   if (t.dataset.f === 'activity') loadActivity();
+  if (t.dataset.f === 'queue') loadTasks();
 });
 
 // Settings toggles — visual only, no persistence yet
@@ -1134,12 +1132,45 @@ async function loadActivity() {
 }
 
 
+function loadTasks() {
+  const STATUS_TAG = {
+    'Complete':     'auto',
+    'Queued':       'app',
+    'In Progress':  'app',
+    'Blocked':      'crit',
+  };
+  fetch('/api/tasks')
+    .then(res => res.json())
+    .then(rows => {
+      if (!Array.isArray(rows)) return;
+      const badge = document.getElementById('queueBadge');
+      if (badge) {
+        badge.textContent = rows.length;
+        badge.hidden = rows.length === 0;
+      }
+      const panel = document.getElementById('queue');
+      const fh    = panel.querySelector('.fh');
+      const body  = rows.map(r => {
+        const tagClass = STATUS_TAG[r.status] || 'app';
+        const sub = [r.module, r.mode].filter(Boolean).join(' · ') || '—';
+        return `<div class="row"><div class="t">${r.name}<small>${sub}</small></div><span class="tag t-${tagClass}">${r.status}</span></div>`;
+      }).join('');
+      panel.innerHTML = '';
+      panel.appendChild(fh);
+      panel.insertAdjacentHTML('beforeend', body || '<div class="row" style="border:none">No tasks in queue.</div>');
+    })
+    .catch(e => console.error('loadTasks failed', e));
+}
+
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 loadConversationHistory();
 loadHealth();
 setInterval(loadHealth, 30_000);
 loadActivity();
 setInterval(loadActivity, 30_000);
+loadTasks();
+setInterval(loadTasks, 30_000);
 </script>
 </body>
 </html>
