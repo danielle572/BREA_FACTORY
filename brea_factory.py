@@ -168,12 +168,11 @@ def at_patch(table: str, record_id: str, fields: dict) -> dict:
     return resp.json()
 
 
-def at_create(table: str, fields: dict) -> dict:
-    resp = requests.post(
-        _at_url(table),
-        headers=AIRTABLE_HEADERS,
-        json={"records": [{"fields": fields}]},
-    )
+def at_create(table: str, fields: dict, typecast: bool = False) -> dict:
+    body = {"records": [{"fields": fields}]}
+    if typecast:
+        body["typecast"] = True
+    resp = requests.post(_at_url(table), headers=AIRTABLE_HEADERS, json=body)
     resp.raise_for_status()
     return resp.json()
 
@@ -498,9 +497,10 @@ def _write_health_diagnostic(
         "Session_Wave":          "F4",
     }
     try:
-        at_create("MASTER_DIAGNOSTIC_LOG", record)
-    except Exception:
-        print(f"  [HEALTH LOG FAIL] Could not write diagnostic for {svc['name']}")
+        at_create("MASTER_DIAGNOSTIC_LOG", record, typecast=True)
+    except Exception as exc:
+        detail = getattr(getattr(exc, "response", None), "text", None) or str(exc)
+        print(f"  [HEALTH LOG FAIL] Could not write diagnostic for {svc['name']}: {type(exc).__name__}: {detail}")
 
 
 def _health_loop() -> None:
