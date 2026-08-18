@@ -225,6 +225,33 @@ def log_diagnostic(
 #  Claude Code SDK executor (Auto tasks)
 # ══════════════════════════════════════════════════════════════════════════════
 
+def _parse_expected_artifact(description: str) -> str:
+    """
+    Optional convention: a task's Description may include a line like
+        EXPECTED_ARTIFACT: BREA_FACTORY/approve_proof.txt
+    If present, execute_headless() verifies that path exists on disk before
+    reporting success. No schema change -- a text convention, so it works
+    retroactively on any existing task with no migration.
+    """
+    m = re.search(r"^\s*EXPECTED_ARTIFACT:\s*(.+)$", description, re.IGNORECASE | re.MULTILINE)
+    return m.group(1).strip() if m else ""
+
+
+def _resolve_artifact_path(path: str) -> str:
+    """Resolve a task-declared artifact path against the Factory root,
+    tolerating a redundant leading 'BREA_FACTORY/' prefix (the orchestrator's
+    own folder name) that some task descriptions include even though the
+    process is already running from that directory."""
+    factory_root = os.path.dirname(os.path.abspath(__file__))
+    if os.path.isabs(path):
+        return path
+    normalized = path.replace("\\", "/")
+    prefix = os.path.basename(factory_root) + "/"
+    if normalized.lower().startswith(prefix.lower()):
+        normalized = normalized[len(prefix):]
+    return os.path.join(factory_root, normalized)
+
+
 def execute_headless(task: dict) -> tuple:
     """
     Executes an Auto task via Claude Code SDK (headless) or Anthropic SDK fallback.
@@ -248,6 +275,7 @@ def execute_headless(task: dict) -> tuple:
     try:
         result = subprocess.run(
             [r"C:\Users\Danielle\AppData\Roaming\npm\claude.cmd", "-p", "--output-format", "text",
+             "--permission-mode", "acceptEdits",
              "--allowedTools", "Edit", "Write", "Read", "Glob", "Grep"],
             input=prompt,
             capture_output=True,
@@ -256,11 +284,32 @@ def execute_headless(task: dict) -> tuple:
             env=os.environ.copy(),
             shell=True,
         )
-        if result.returncode == 0:
-            print(f"[CLI] Task complete: {name}")
-            return (True, result.stdout.strip())
-        stderr = result.stderr.strip()
-        return (False, f"Claude Code CLI exit {result.returncode}: {stderr}")
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            return (False, f"Claude Code CLI exit {result.returncode}: {stderr}")
+
+        output = result.stdout.strip()
+
+        # BACKSTOP -- refusal described but not executed, even though exit code is 0
+        _REFUSAL_MARKERS = ("pending your approval", "permission prompt", "needs to be granted")
+        hit = next((m for m in _REFUSAL_MARKERS if m in output.lower()), None)
+        if hit:
+            print(f"[CLI] Refusal detected ('{hit}'): {name}")
+            return (False, f"Refusal detected: {output[:500]}")
+
+        # PRIMARY -- verify a declared expected artifact, if the task declared one
+        expected_path = _parse_expected_artifact(desc)
+        if expected_path:
+            full_path = _resolve_artifact_path(expected_path)
+            if not os.path.exists(full_path):
+                print(f"[CLI] Expected artifact missing: {expected_path}")
+                return (False, f"Unverified: expected artifact not found: {expected_path}")
+            print(f"[CLI] Task complete (artifact verified): {name}")
+            return (True, output)
+
+        # FALLBACK -- exit 0, no refusal string, but nothing to verify against
+        print(f"[CLI] Task complete (unverified -- no artifact assertion): {name}")
+        return (True, f"Completed (unverified — no artifact assertion)\n\n{output}")
     except FileNotFoundError:
         pass   # CLI not installed -- fall through
     except subprocess.TimeoutExpired:
