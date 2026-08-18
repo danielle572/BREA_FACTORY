@@ -237,7 +237,7 @@ def index():
 @app.route("/api/empire-status")
 def empire_status():
     try:
-        caps     = at_get("MASTER_CAPABILITY_REGISTRY", max_records=200)
+        caps     = at_get("MASTER_CAPABILITY_REGISTRY", fetch_all=True)
         active   = sum(1 for r in caps
                        if r.get("fields", {}).get("Status") == "Active")
         pending  = sum(1 for r in caps
@@ -245,13 +245,11 @@ def empire_status():
         tasks    = at_get("TASK_QUEUE")
         in_queue = sum(1 for r in tasks
                        if r.get("fields", {}).get("Status") in ("Queued", "In Progress"))
-        issues   = at_get("MASTER_DIAGNOSTIC_LOG",
-                          formula="{Resolution_Status}='Open'", max_records=200)
         return jsonify({
             "active_capabilities": active,
             "pending_build":       pending,
             "tasks_in_queue":      in_queue,
-            "open_issues":         len(issues),
+            "open_issues":         None,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -486,17 +484,17 @@ def spec_chat():
 @app.route("/api/health")
 def health():
     services = {
-        "brea3":   ("Brea 3",              5000),
-        "boss":    ("BOSS",                5002),
-        "factory": ("Factory Orchestrator", 5004),
+        "brea3":   ("Brea 3",              "http://localhost:5000/"),
+        "boss":    ("BOSS",                "https://web-production-524676.up.railway.app/health"),
+        "factory": ("Factory Orchestrator", "http://localhost:5004/status"),
     }
     result = {}
-    for key, (name, port) in services.items():
+    for key, (name, url) in services.items():
         try:
-            r = requests.get(f"http://localhost:{port}/status", timeout=2)
-            result[key] = {"name": name, "port": port, "online": r.status_code == 200}
+            r = requests.get(url, timeout=5)
+            result[key] = {"name": name, "online": r.status_code == 200}
         except Exception:
-            result[key] = {"name": name, "port": port, "online": False}
+            result[key] = {"name": name, "online": False}
     return jsonify(result)
 
 

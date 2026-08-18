@@ -356,13 +356,12 @@ body{
       <div class="feature" id="overview">
         <div class="fh">Overview</div>
         <div class="stats">
-          <div class="stat"><div class="num">34</div><div class="lab">Active capabilities</div></div>
-          <div class="stat"><div class="num">6</div><div class="lab">Pending build</div></div>
-          <div class="stat"><div class="num">2</div><div class="lab">Tasks in queue</div></div>
-          <div class="stat"><div class="num">1</div><div class="lab">Open issue</div></div>
+          <div class="stat"><div class="num" id="statActiveCaps">—</div><div class="lab">Active capabilities</div></div>
+          <div class="stat"><div class="num" id="statPendingBuild">—</div><div class="lab">Pending build</div></div>
+          <div class="stat"><div class="num" id="statTasksQueue">—</div><div class="lab">Tasks in queue</div></div>
+          <div class="stat"><div class="num" id="statOpenIssues">—</div><div class="lab">Open issues</div></div>
         </div>
-        <div class="line" style="margin-top:6px"><span class="dot g"></span> All services healthy · mock data</div>
-        <div class="line"><span class="dot a"></span> Live feeds wire in next build</div>
+        <div class="line" style="margin-top:6px"><span class="dot" id="healthDot"></span> <span id="healthText">Checking service health…</span></div>
       </div>
 
       <div class="feature" id="queue">
@@ -1009,6 +1008,7 @@ grid.addEventListener('click', e => {
   back.style.visibility = 'visible';
   if (t.dataset.f === 'activity') loadActivity();
   if (t.dataset.f === 'queue') loadTasks();
+  if (t.dataset.f === 'overview') loadOverview();
 });
 
 // Settings toggles — visual only, no persistence yet
@@ -1163,6 +1163,36 @@ function loadTasks() {
 }
 
 
+function loadOverview() {
+  fetch('/api/empire-status')
+    .then(res => res.json())
+    .then(d => {
+      if (d.error) return;
+      document.getElementById('statActiveCaps').textContent   = d.active_capabilities ?? '—';
+      document.getElementById('statPendingBuild').textContent = d.pending_build ?? '—';
+      document.getElementById('statTasksQueue').textContent   = d.tasks_in_queue ?? '—';
+      document.getElementById('statOpenIssues').textContent   = d.open_issues ?? '—';
+    })
+    .catch(e => console.error('loadOverview (empire-status) failed', e));
+
+  fetch('/api/health')
+    .then(res => res.json())
+    .then(d => {
+      const down = Object.values(d).filter(s => !s.online).map(s => s.name);
+      const dot  = document.getElementById('healthDot');
+      const text = document.getElementById('healthText');
+      if (down.length === 0) {
+        dot.className = 'dot g';
+        text.textContent = 'All services healthy';
+      } else {
+        dot.className = 'dot a';
+        text.textContent = `${down.join(', ')} down`;
+      }
+    })
+    .catch(e => console.error('loadOverview (health) failed', e));
+}
+
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 loadConversationHistory();
 loadHealth();
@@ -1171,6 +1201,8 @@ loadActivity();
 setInterval(loadActivity, 30_000);
 loadTasks();
 setInterval(loadTasks, 30_000);
+loadOverview();
+setInterval(loadOverview, 30_000);
 </script>
 </body>
 </html>
