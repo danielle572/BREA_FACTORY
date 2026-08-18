@@ -1,8 +1,11 @@
 # Secrets — never commit
 .env
 .env.*
+*.env
 *.pem
 *.key
+*secret*
+*key*.json
 
 # Python
 __pycache__/
@@ -19,6 +22,7 @@ ngrok
 
 # Logs — regenerated at runtime (factory_orchestrator.log alone is 18 MB)
 *.log
+factory_orchestrator.log
 
 # Audio scratch (voice pipeline writes here at runtime; none present now)
 *.wav
@@ -28,3 +32,5 @@ tmp_audio/
 
 # Stale local backups — never commit
 app_backup_*.py
+*_backup*/
+backups/
