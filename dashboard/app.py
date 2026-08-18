@@ -630,9 +630,62 @@ def respond():
 
 # ── Socket.IO ─────────────────────────────────────────────────────────────────
 
+def _fetch_task_fields(task_id: str) -> dict:
+    try:
+        r = requests.get(
+            f"https://api.airtable.com/v0/{FACTORY_BASE_ID}/TASK_QUEUE/{task_id}",
+            headers=AT_HEADERS, timeout=5,
+        )
+        r.raise_for_status()
+        return r.json().get("fields", {})
+    except Exception:
+        return {}
+
+
+def _replay_pending_approvals():
+    """Re-show any already-held Approve/Critical tasks to a client that just
+    connected — approve_required/critical_required are one-shot live events,
+    so a browser that (re)connects after the event fired would otherwise never
+    see the card at all."""
+    try:
+        r = requests.get(f"http://localhost:{FACTORY_PORT}/queue", timeout=5)
+        r.raise_for_status()
+        data = r.json()
+    except Exception:
+        return
+
+    for task_id in data.get("pending_approvals", []):
+        fields = _fetch_task_fields(task_id)
+        if fields:
+            emit("approve_required", {
+                "task_id":     task_id,
+                "task_name":   fields.get("Task_Name", ""),
+                "description": fields.get("Description", ""),
+                "module":      fields.get("Module", ""),
+                "priority":    fields.get("Priority", ""),
+            })
+
+    for task_id in data.get("pending_criticals", []):
+        fields = _fetch_task_fields(task_id)
+        if fields:
+            emit("critical_required", {
+                "task_id":     task_id,
+                "task_name":   fields.get("Task_Name", ""),
+                "description": fields.get("Description", ""),
+                "module":      fields.get("Module", ""),
+                "priority":    fields.get("Priority", ""),
+                "instruction": (
+                    "CRITICAL task -- explicit confirmation AND a written note "
+                    "are required before this executes. POST to /confirm/<task_id> "
+                    "with JSON body: {\"note\": \"your reason here\"}."
+                ),
+            })
+
+
 @socketio.on("connect")
 def on_connect():
     emit("dashboard_ready", {"port": PORT})
+    _replay_pending_approvals()
 
 
 @socketio.on("disconnect")
