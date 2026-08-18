@@ -1035,7 +1035,7 @@ function hideApprovalCard() {
 }
 
 async function doApprove() {
-  if (!_currentTask) return;
+  if (!_currentTask) { console.warn('doApprove: no active task in card — tap ignored'); return; }
   const id = _currentTask.task_id;
   try {
     if (_currentTask.isCritical) {
@@ -1047,7 +1047,12 @@ async function doApprove() {
       });
       if (!r.ok) { const e = await r.json(); alert(`Confirm failed: ${e.error || 'error'}`); return; }
     } else {
-      await fetch(`/api/approve/${id}`, {method: 'POST'});
+      const r = await fetch(`/api/approve/${id}`, {method: 'POST'});
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        alert(`Approve failed: ${e.error || r.status}`);
+        return;
+      }
     }
     hideApprovalCard();
   } catch (e) { alert(`Action failed: ${e.message}`); }
@@ -1105,7 +1110,11 @@ socket.on('approve_required',  data => showApprovalCard(data, false));
 socket.on('critical_required', data => showApprovalCard(data, true));
 socket.on('task_complete',  () => loadHealth());
 socket.on('task_failed',    () => loadHealth());
-socket.on('task_rejected',  () => hideApprovalCard());
+socket.on('task_rejected', (data) => {
+  if (_currentTask && data && data.task_id === _currentTask.task_id) {
+    hideApprovalCard();
+  }
+});
 socket.on('factory_status', () => loadHealth());
 socket.on('health_critical',() => loadHealth());
 socket.on('health_warning', () => loadHealth());
