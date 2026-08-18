@@ -74,12 +74,13 @@ PORT            = 5004
 _HEALTH_INTERVAL       = 60    # seconds between full sweeps
 _HEALTH_SLOW_THRESHOLD = 2.0   # seconds — above this is a Warning
 _HEALTH_TARGETS = [
-    {"key": "brea3",     "name": "Brea 3",               "port": 5000, "path": "/status"},
-    {"key": "boss",      "name": "BOSS",                 "port": 5002, "path": "/status"},
+    {"key": "brea3",     "name": "Brea 3",               "port": 5000, "path": "/"},
+    {"key": "boss",      "name": "BOSS",                 "url": "https://web-production-524676.up.railway.app/health"},
     {"key": "dashboard", "name": "Factory Dashboard",    "port": 5003, "path": "/"},
     {"key": "factory",   "name": "Factory Orchestrator", "port": 5004, "path": "/status"},
 ]
 _health_fail_count: dict = {}   # key -> consecutive failure/slow count
+_health_last_state: dict = {}  # key -> "OK" | "Warning" | "Critical"
 
 AIRTABLE_HEADERS = {
     "Authorization": f"Bearer {AIRTABLE_TOKEN}",
@@ -487,7 +488,7 @@ def _write_health_diagnostic(
         "Error_Name":            f"HEALTH-{svc['key'].upper()}-{ts}",
         "Instance_ID":           "FACTORY",
         "Instance_Type":         "Factory",
-        "Error_Category":        "Transient" if severity == "Warning" else "Hard Break",
+        "Error_Category":        "Transient" if severity in ("Warning", "Recovered") else "Hard Break",
         "Error_Type":            severity,
         "Error_Message":         f"{svc['name']} health check {severity.lower()}",
         "Brea_Diagnosis":        diagnosis,
@@ -498,6 +499,7 @@ def _write_health_diagnostic(
     }
     try:
         at_create("MASTER_DIAGNOSTIC_LOG", record, typecast=True)
+        print(f"  [HEALTH OK] Wrote {severity} row for {svc['name']} -> {record['Error_Name']}")
     except Exception as exc:
         detail = getattr(getattr(exc, "response", None), "text", None) or str(exc)
         print(f"  [HEALTH LOG FAIL] Could not write diagnostic for {svc['name']}: {type(exc).__name__}: {detail}")
@@ -507,10 +509,11 @@ def _health_loop() -> None:
     print(f"  [HEALTH] Watchdog started — {len(_HEALTH_TARGETS)} services, interval {_HEALTH_INTERVAL}s")
     while True:
         for svc in _HEALTH_TARGETS:
-            key  = svc["key"]
-            name = svc["name"]
-            port = svc["port"]
-            url  = f"http://localhost:{port}{svc['path']}"
+            key      = svc["key"]
+            name     = svc["name"]
+            port     = svc.get("port")
+            url      = svc.get("url") or f"http://localhost:{port}{svc['path']}"
+            location = svc.get("url") or f"port {port}"
 
             try:
                 t0      = time.time()
@@ -518,7 +521,15 @@ def _health_loop() -> None:
                 elapsed = time.time() - t0
 
                 if resp.status_code == 200 and elapsed <= _HEALTH_SLOW_THRESHOLD:
+                    was_unhealthy = _health_last_state.get(key) not in (None, "OK")
                     _health_fail_count[key] = 0
+                    if was_unhealthy:
+                        _write_health_diagnostic(
+                            svc, "Recovered",
+                            f"{name} is healthy again after a prior {_health_last_state[key].lower()} state.",
+                            "No action needed — auto-resolved.", False,
+                        )
+                    _health_last_state[key] = "OK"
                     socketio.emit("health_ok", {
                         "service": name, "port": port,
                         "elapsed_ms": round(elapsed * 1000),
@@ -536,7 +547,9 @@ def _health_loop() -> None:
                         f"Check {name} resource utilization. "
                         "If this persists across multiple checks, restart the service."
                     )
-                    _write_health_diagnostic(svc, "Warning", diag, fix, consec >= 3)
+                    if _health_last_state.get(key) != "Warning":
+                        _write_health_diagnostic(svc, "Warning", diag, fix, consec >= 3)
+                    _health_last_state[key] = "Warning"
                     socketio.emit("health_warning", {
                         "service": name, "port": port,
                         "diagnosis": diag,
@@ -554,7 +567,9 @@ def _health_loop() -> None:
                         "it may have lost its database connection or hit a configuration problem."
                     )
                     fix = f"Check {name} logs for root cause and restart if the error persists."
-                    _write_health_diagnostic(svc, "Critical", diag, fix, consec >= 3)
+                    if _health_last_state.get(key) != "Critical":
+                        _write_health_diagnostic(svc, "Critical", diag, fix, consec >= 3)
+                    _health_last_state[key] = "Critical"
                     socketio.emit("health_critical", {
                         "service": name, "port": port,
                         "diagnosis": diag,
@@ -567,15 +582,17 @@ def _health_loop() -> None:
                 _health_fail_count[key] = _health_fail_count.get(key, 0) + 1
                 consec = _health_fail_count[key]
                 diag   = (
-                    f"{name} is not responding on port {port}. "
+                    f"{name} is not responding at {location}. "
                     "The service has likely crashed, been killed, or never started. "
                     "No requests can reach it right now."
                 )
                 fix = (
-                    f"Verify the {name} process is running on port {port}. "
+                    f"Verify the {name} process is running ({location}). "
                     "Check for crash logs and restart the service."
                 )
-                _write_health_diagnostic(svc, "Critical", diag, fix, consec >= 3)
+                if _health_last_state.get(key) != "Critical":
+                    _write_health_diagnostic(svc, "Critical", diag, fix, consec >= 3)
+                _health_last_state[key] = "Critical"
                 socketio.emit("health_critical", {
                     "service": name, "port": port,
                     "diagnosis": diag,
