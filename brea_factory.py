@@ -290,12 +290,18 @@ def execute_headless(task: dict) -> tuple:
 
         output = result.stdout.strip()
 
+        stderr_raw = result.stderr.strip()
+        print(f"[CLI] Raw stdout ({name}):\n{output[:2000]}")
+        if stderr_raw:
+            print(f"[CLI] Raw stderr ({name}):\n{stderr_raw[:2000]}")
+
         # BACKSTOP -- refusal described but not executed, even though exit code is 0
         _REFUSAL_MARKERS = ("pending your approval", "permission prompt", "needs to be granted")
         hit = next((m for m in _REFUSAL_MARKERS if m in output.lower()), None)
         if hit:
             print(f"[CLI] Refusal detected ('{hit}'): {name}")
-            return (False, f"Refusal detected: {output[:500]}")
+            return (False,
+                f"Refusal detected: {output[:2000]}\n\nCLI STDERR:\n{stderr_raw[:2000]}")
 
         # PRIMARY -- verify a declared expected artifact, if the task declared one
         expected_path = _parse_expected_artifact(desc)
@@ -303,7 +309,9 @@ def execute_headless(task: dict) -> tuple:
             full_path = _resolve_artifact_path(expected_path)
             if not os.path.exists(full_path):
                 print(f"[CLI] Expected artifact missing: {expected_path}")
-                return (False, f"Unverified: expected artifact not found: {expected_path}")
+                return (False,
+                    f"Unverified: expected artifact not found: {expected_path}\n\n"
+                    f"CLI STDOUT:\n{output[:2000]}\n\nCLI STDERR:\n{stderr_raw[:2000]}")
             print(f"[CLI] Task complete (artifact verified): {name}")
             return (True, output)
 
