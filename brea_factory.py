@@ -508,100 +508,105 @@ def _write_health_diagnostic(
 def _health_loop() -> None:
     print(f"  [HEALTH] Watchdog started — {len(_HEALTH_TARGETS)} services, interval {_HEALTH_INTERVAL}s")
     while True:
-        for svc in _HEALTH_TARGETS:
-            key      = svc["key"]
-            name     = svc["name"]
-            port     = svc.get("port")
-            url      = svc.get("url") or f"http://localhost:{port}{svc['path']}"
-            location = svc.get("url") or f"port {port}"
+        try:
+            for svc in _HEALTH_TARGETS:
+                key      = svc["key"]
+                name     = svc["name"]
+                port     = svc.get("port")
+                url      = svc.get("url") or f"http://localhost:{port}{svc['path']}"
+                location = svc.get("url") or f"port {port}"
 
-            try:
-                t0      = time.time()
-                resp    = requests.get(url, timeout=_HEALTH_SLOW_THRESHOLD + 1.0)
-                elapsed = time.time() - t0
+                try:
+                    t0      = time.time()
+                    resp    = requests.get(url, timeout=_HEALTH_SLOW_THRESHOLD + 1.0)
+                    elapsed = time.time() - t0
 
-                if resp.status_code == 200 and elapsed <= _HEALTH_SLOW_THRESHOLD:
-                    was_unhealthy = _health_last_state.get(key) not in (None, "OK")
-                    _health_fail_count[key] = 0
-                    if was_unhealthy:
-                        _write_health_diagnostic(
-                            svc, "Recovered",
-                            f"{name} is healthy again after a prior {_health_last_state[key].lower()} state.",
-                            "No action needed — auto-resolved.", False,
+                    if resp.status_code == 200 and elapsed <= _HEALTH_SLOW_THRESHOLD:
+                        was_unhealthy = _health_last_state.get(key) not in (None, "OK")
+                        _health_fail_count[key] = 0
+                        if was_unhealthy:
+                            _write_health_diagnostic(
+                                svc, "Recovered",
+                                f"{name} is healthy again after a prior {_health_last_state[key].lower()} state.",
+                                "No action needed — auto-resolved.", False,
+                            )
+                        _health_last_state[key] = "OK"
+                        socketio.emit("health_ok", {
+                            "service": name, "port": port,
+                            "elapsed_ms": round(elapsed * 1000),
+                        })
+
+                    elif resp.status_code == 200:   # responded, but slowly
+                        _health_fail_count[key] = _health_fail_count.get(key, 0) + 1
+                        consec = _health_fail_count[key]
+                        diag   = (
+                            f"{name} responded slowly: {elapsed:.2f}s (threshold {_HEALTH_SLOW_THRESHOLD}s). "
+                            "Likely cause: high CPU/memory load or a slow downstream API call. "
+                            "Performance may be degraded for end users."
                         )
-                    _health_last_state[key] = "OK"
-                    socketio.emit("health_ok", {
-                        "service": name, "port": port,
-                        "elapsed_ms": round(elapsed * 1000),
-                    })
+                        fix = (
+                            f"Check {name} resource utilization. "
+                            "If this persists across multiple checks, restart the service."
+                        )
+                        if _health_last_state.get(key) != "Warning":
+                            _write_health_diagnostic(svc, "Warning", diag, fix, consec >= 3)
+                        _health_last_state[key] = "Warning"
+                        socketio.emit("health_warning", {
+                            "service": name, "port": port,
+                            "diagnosis": diag,
+                            "elapsed_ms": round(elapsed * 1000),
+                            "consecutive": consec,
+                            "pattern_flag": consec >= 3,
+                        })
 
-                elif resp.status_code == 200:   # responded, but slowly
+                    else:   # non-200 status code
+                        _health_fail_count[key] = _health_fail_count.get(key, 0) + 1
+                        consec = _health_fail_count[key]
+                        diag   = (
+                            f"{name} returned HTTP {resp.status_code}. "
+                            "The service is running but in an error state — "
+                            "it may have lost its database connection or hit a configuration problem."
+                        )
+                        fix = f"Check {name} logs for root cause and restart if the error persists."
+                        if _health_last_state.get(key) != "Critical":
+                            _write_health_diagnostic(svc, "Critical", diag, fix, consec >= 3)
+                        _health_last_state[key] = "Critical"
+                        socketio.emit("health_critical", {
+                            "service": name, "port": port,
+                            "diagnosis": diag,
+                            "status_code": resp.status_code,
+                            "consecutive": consec,
+                            "pattern_flag": consec >= 3,
+                        })
+
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
                     _health_fail_count[key] = _health_fail_count.get(key, 0) + 1
                     consec = _health_fail_count[key]
                     diag   = (
-                        f"{name} responded slowly: {elapsed:.2f}s (threshold {_HEALTH_SLOW_THRESHOLD}s). "
-                        "Likely cause: high CPU/memory load or a slow downstream API call. "
-                        "Performance may be degraded for end users."
+                        f"{name} is not responding at {location}. "
+                        "The service has likely crashed, been killed, or never started. "
+                        "No requests can reach it right now."
                     )
                     fix = (
-                        f"Check {name} resource utilization. "
-                        "If this persists across multiple checks, restart the service."
+                        f"Verify the {name} process is running ({location}). "
+                        "Check for crash logs and restart the service."
                     )
-                    if _health_last_state.get(key) != "Warning":
-                        _write_health_diagnostic(svc, "Warning", diag, fix, consec >= 3)
-                    _health_last_state[key] = "Warning"
-                    socketio.emit("health_warning", {
-                        "service": name, "port": port,
-                        "diagnosis": diag,
-                        "elapsed_ms": round(elapsed * 1000),
-                        "consecutive": consec,
-                        "pattern_flag": consec >= 3,
-                    })
-
-                else:   # non-200 status code
-                    _health_fail_count[key] = _health_fail_count.get(key, 0) + 1
-                    consec = _health_fail_count[key]
-                    diag   = (
-                        f"{name} returned HTTP {resp.status_code}. "
-                        "The service is running but in an error state — "
-                        "it may have lost its database connection or hit a configuration problem."
-                    )
-                    fix = f"Check {name} logs for root cause and restart if the error persists."
                     if _health_last_state.get(key) != "Critical":
                         _write_health_diagnostic(svc, "Critical", diag, fix, consec >= 3)
                     _health_last_state[key] = "Critical"
                     socketio.emit("health_critical", {
                         "service": name, "port": port,
                         "diagnosis": diag,
-                        "status_code": resp.status_code,
                         "consecutive": consec,
                         "pattern_flag": consec >= 3,
                     })
 
-            except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-                _health_fail_count[key] = _health_fail_count.get(key, 0) + 1
-                consec = _health_fail_count[key]
-                diag   = (
-                    f"{name} is not responding at {location}. "
-                    "The service has likely crashed, been killed, or never started. "
-                    "No requests can reach it right now."
-                )
-                fix = (
-                    f"Verify the {name} process is running ({location}). "
-                    "Check for crash logs and restart the service."
-                )
-                if _health_last_state.get(key) != "Critical":
-                    _write_health_diagnostic(svc, "Critical", diag, fix, consec >= 3)
-                _health_last_state[key] = "Critical"
-                socketio.emit("health_critical", {
-                    "service": name, "port": port,
-                    "diagnosis": diag,
-                    "consecutive": consec,
-                    "pattern_flag": consec >= 3,
-                })
+                except Exception as exc:
+                    print(f"  [HEALTH] Unexpected error checking {name}: {exc}")
 
-            except Exception as exc:
-                print(f"  [HEALTH] Unexpected error checking {name}: {exc}")
+            print(f"  [HEALTH] sweep complete — next in {_HEALTH_INTERVAL}s")
+        except Exception:
+            print("  [HEALTH] SWEEP ERROR: " + traceback.format_exc())
 
         time.sleep(_HEALTH_INTERVAL)
 
