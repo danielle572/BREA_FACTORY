@@ -187,11 +187,36 @@ def _log_conversation(user_message: str, brea_response: str) -> None:
         print(f"  [CONVERSATION_LOG] Write failed: {exc}")
 
 
-def _get_empire_context() -> str:
-    """Fetches live empire state from Airtable for Brea's system prompt."""
+_PROJECT_SCOPE_MAP = {
+    "brea 3": "Brea 3",
+    "boss":   "BEOS",     # MASTER_CAPABILITY_REGISTRY.Scope / MASTER_DIAGNOSTIC_LOG.Instance_Type
+                          # use "BEOS" for BOSS -- see STATUS.md future-cleanup note
+    "factory": "Factory",
+    "phone":  None,       # no Phone rows exist in Scope/Instance_Type -- signals fallback
+}
+
+
+def _get_empire_context(project: str = "") -> str:
+    """
+    Fetches live empire state from Airtable for Brea's system prompt.
+    When `project` is given (Brea 3 | BOSS | Factory | Phone), scopes whatever
+    genuinely has a matching field; falls back to empire-wide (with an honest
+    note) for anything that doesn't track that dimension. Default "" preserves
+    today's empire-wide behavior unchanged -- /respond and voice pass nothing.
+    """
     parts = []
+    scope = None
+    if project:
+        scope = _PROJECT_SCOPE_MAP.get(project.strip().lower())
+        if scope is None:
+            parts.append(
+                "(Phone-specific capability/diagnostic data isn't tracked yet "
+                "-- showing empire-wide for those.)"
+            )
     try:
-        caps    = at_get("MASTER_CAPABILITY_REGISTRY", fetch_all=True)
+        caps = at_get("MASTER_CAPABILITY_REGISTRY", fetch_all=True)
+        if scope:
+            caps = [r for r in caps if r.get("fields", {}).get("Scope") == scope]
         active  = sum(1 for r in caps if r.get("fields", {}).get("Status") == "Active")
         pending = sum(1 for r in caps
                       if "Pending" in str(r.get("fields", {}).get("Status", "")))
@@ -202,6 +227,8 @@ def _get_empire_context() -> str:
         tasks    = at_get("TASK_QUEUE")
         in_queue = [r for r in tasks
                     if r.get("fields", {}).get("Status") in ("Queued", "In Progress")]
+        if project:
+            in_queue = [r for r in in_queue if r.get("fields", {}).get("Target_System") == project]
         if in_queue:
             names = [r.get("fields", {}).get("Task_Name", "—") for r in in_queue[:5]]
             parts.append(f"Task queue ({len(in_queue)} active): {', '.join(names)}.")
@@ -212,6 +239,8 @@ def _get_empire_context() -> str:
     try:
         issues = at_get("MASTER_DIAGNOSTIC_LOG",
                         formula="{Resolution_Status}='Open'", max_records=20)
+        if scope:
+            issues = [r for r in issues if r.get("fields", {}).get("Instance_Type") == scope]
         if issues:
             msgs = [r.get("fields", {}).get("Error_Message", "—") for r in issues[:5]]
             parts.append(f"Open issues ({len(issues)}): {'; '.join(msgs)}.")
@@ -510,6 +539,7 @@ def _normalize_target_system(raw: str) -> str:
 def spec_chat():
     data     = request.get_json(silent=True) or {}
     messages = data.get("messages", [])
+    project_selected = data.get("project", "")
     if not messages:
         return jsonify({"error": "No messages provided"}), 400
     if not ANTHROPIC_API_KEY:
@@ -522,6 +552,9 @@ def spec_chat():
         system_msg += f"\n\n--- BREA EMPIRE MASTER KNOWLEDGE BASE ---\n{EMPIRE_KB}\n--- END ---"
     for doc_name, doc_content in PROJECT_DOCS.items():
         system_msg += f"\n\n--- {doc_name.upper()} ---\n{doc_content}\n--- END ---"
+
+    empire_ctx  = _get_empire_context(project=project_selected)
+    system_msg += f"\n\nLive Empire State:\n{empire_ctx}"
 
     try:
         client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
@@ -555,7 +588,6 @@ def spec_chat():
         }), 500
 
     queued, failed = [], []
-    project_selected = data.get("project", "")
     platform         = project_selected or spec.get("platform", "")
     target_system    = _normalize_target_system(platform)
     if platform and not target_system:
