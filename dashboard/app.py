@@ -327,6 +327,22 @@ def tasks():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/projects")
+def get_projects():
+    try:
+        records = at_get("PROJECTS")
+        return jsonify([
+            {
+                "name":   r.get("fields", {}).get("Name", ""),
+                "type":   r.get("fields", {}).get("Type", ""),
+                "status": r.get("fields", {}).get("Status", ""),
+            }
+            for r in records
+        ])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 @app.route("/api/conversation-history")
 def conversation_history():
     try:
@@ -347,6 +363,78 @@ def conversation_history():
             }
             for r in records
         ])
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/setup-projects")
+def setup_projects():
+    try:
+        tables_url = f"https://api.airtable.com/v0/meta/bases/{FACTORY_BASE_ID}/tables"
+        resp = requests.get(tables_url, headers=AT_HEADERS, timeout=10)
+        resp.raise_for_status()
+        tables = resp.json().get("tables", [])
+        existing_table = next((t for t in tables if t["name"] == "PROJECTS"), None)
+
+        if existing_table:
+            table_id = existing_table["id"]
+            created  = False
+        else:
+            payload = {
+                "name": "PROJECTS",
+                "fields": [
+                    {"name": "Name", "type": "singleLineText"},
+                    {"name": "Type", "type": "singleSelect", "options": {"choices": [
+                        {"name": "Brea instance"},
+                        {"name": "BOSS instance"},
+                        {"name": "Factory"},
+                        {"name": "Agency"},
+                        {"name": "Phone"},
+                    ]}},
+                    {"name": "Status", "type": "singleSelect", "options": {"choices": [
+                        {"name": "Active"},
+                        {"name": "Deployed"},
+                        {"name": "Building"},
+                    ]}},
+                ],
+            }
+            create_resp = requests.post(tables_url, headers=AT_HEADERS, json=payload, timeout=10)
+            create_resp.raise_for_status()
+            table_id = create_resp.json().get("id")
+            created  = True
+
+        # idempotent seed -- only insert names not already present
+        existing_rows  = at_get("PROJECTS")
+        existing_names = {r.get("fields", {}).get("Name", "") for r in existing_rows}
+
+        seed_rows = [
+            {"Name": "Brea 3",  "Type": "Brea instance", "Status": "Active"},
+            {"Name": "BOSS",    "Type": "BOSS instance",  "Status": "Active"},
+            {"Name": "Factory", "Type": "Factory",        "Status": "Active"},
+            {"Name": "Phone",   "Type": "Phone",          "Status": "Active"},
+        ]
+        seeded, seed_failed, skipped = [], [], []
+        for fields in seed_rows:
+            if fields["Name"] in existing_names:
+                skipped.append(fields["Name"])
+                continue
+            try:
+                r = requests.post(
+                    f"https://api.airtable.com/v0/{FACTORY_BASE_ID}/PROJECTS",
+                    headers=AT_HEADERS, json={"fields": fields}, timeout=10,
+                )
+                r.raise_for_status()
+                seeded.append(fields["Name"])
+            except Exception as e:
+                seed_failed.append({"name": fields["Name"], "error": str(e)})
+
+        return jsonify({
+            "status":      "created" if created else "already existed",
+            "table_id":    table_id,
+            "seeded":      seeded,
+            "skipped":     skipped,
+            "seed_failed": seed_failed,
+        })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -996,9 +1084,25 @@ def _check_conversation_log() -> None:
         print(f"  [SETUP] Could not verify CONVERSATION_LOG table: {exc}")
 
 
+def _check_projects_table() -> None:
+    try:
+        resp = requests.get(
+            f"https://api.airtable.com/v0/meta/bases/{FACTORY_BASE_ID}/tables",
+            headers=AT_HEADERS, timeout=10,
+        )
+        resp.raise_for_status()
+        tables = resp.json().get("tables", [])
+        if not any(t["name"] == "PROJECTS" for t in tables):
+            print(f"\n  [SETUP] PROJECTS table not found in Airtable.")
+            print(f"  [SETUP] Visit http://localhost:{PORT}/api/setup-projects once to create it.\n")
+    except Exception as exc:
+        print(f"  [SETUP] Could not verify PROJECTS table: {exc}")
+
+
 if __name__ == "__main__":
     print(f"\n  BREA FACTORY DASHBOARD  |  Session F3  |  http://localhost:{PORT}\n")
     _check_conversation_log()
+    _check_projects_table()
     threading.Thread(target=_connect_bridge, daemon=True, name="factory-bridge").start()
     if Observer:
         # WATCHDOG DISABLED 2026-08-03 — root cause of "alive but deaf" hangs.

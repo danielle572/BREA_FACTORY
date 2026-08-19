@@ -89,6 +89,13 @@ body{
 .quicklinks{display:flex;gap:12px}
 .qlink{font-family:var(--font);font-size:11px;color:var(--gold);text-decoration:none;opacity:.85}
 .qlink:hover{opacity:1}
+.proj-select{
+  font-family:var(--mono);font-size:9px;letter-spacing:.04em;text-transform:uppercase;
+  color:var(--gold);background:transparent;border:1px solid var(--border-soft);
+  border-radius:999px;padding:3px 8px;cursor:pointer;
+  -webkit-appearance:none;appearance:none;
+}
+.proj-select:focus{border-color:var(--gold);outline:none}
 
 /* ══ Notification toast ═════════════════════════════════════════════════ */
 #notif-toast{
@@ -284,6 +291,9 @@ body{
     <div class="status" id="status-pill"><span class="dot" id="status-dot"></span><span id="status-text">—</span></div>
     <div class="tagline">Factory</div>
     <div class="quicklinks">
+      <select id="project-select" class="proj-select">
+        <option value="">— Project —</option>
+      </select>
       <a href="#" class="qlink" id="link-brea3">Brea 3 ↗</a>
       <a href="#" class="qlink" id="link-boss">BOSS ↗</a>
     </div>
@@ -437,6 +447,8 @@ let _typingBubbleTimeout = null; // 30s hard backstop so the typing bubble can n
 
 let _specMessages    = [];
 let _specActive      = false;
+let _selectedProject = '';
+let _specProject     = '';
 const BUILD_INTENT_RE = /\b(build|create|add|implement|develop|set ?up|integrate|spec out|new (feature|capability)|kick off)\b/i;
 
 let _pendingNotification = null;
@@ -834,6 +846,9 @@ async function sendToRespond(text) {
 }
 
 async function sendToSpec(text) {
+  if (!_specActive) {
+    _specProject = _selectedProject;
+  }
   _specActive = true;
   _specMessages.push({role: 'user', content: text});
 
@@ -841,7 +856,7 @@ async function sendToSpec(text) {
     const r = await fetch('/api/spec', {
       method:  'POST',
       headers: {'Content-Type': 'application/json'},
-      body:    JSON.stringify({messages: _specMessages}),
+      body:    JSON.stringify({messages: _specMessages, project: _specProject}),
     });
     const data = await r.json();
     removeTypingBubble();
@@ -874,6 +889,7 @@ async function sendToSpec(text) {
       if (bits.length) addChatMessage(bits.join(' '), 'brea');
       _specMessages = [];
       _specActive   = false;
+      _specProject  = '';
     }
     _breaBusy = false; tryShowNotification();
   } catch (e) {
@@ -1202,6 +1218,25 @@ function loadOverview() {
 }
 
 
+function loadProjects() {
+  fetch('/api/projects')
+    .then(res => res.json())
+    .then(rows => {
+      if (!Array.isArray(rows)) return;
+      const sel = document.getElementById('project-select');
+      rows.forEach(p => {
+        if (!p.name) return;
+        const opt = document.createElement('option');
+        opt.value = p.name;
+        opt.textContent = p.name;
+        sel.appendChild(opt);
+      });
+      sel.onchange = e => { _selectedProject = e.target.value; };
+    })
+    .catch(e => console.error('loadProjects failed', e));
+}
+
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 loadConversationHistory();
 loadHealth();
@@ -1212,6 +1247,7 @@ loadTasks();
 setInterval(loadTasks, 30_000);
 loadOverview();
 setInterval(loadOverview, 30_000);
+loadProjects();
 </script>
 </body>
 </html>
