@@ -903,6 +903,19 @@ def _ensure_task_queue_fields() -> None:
             })
         if "Confirmation_Note" not in existing:
             to_add.append({"name": "Confirmation_Note", "type": "multilineText"})
+        if "Target_System" not in existing:
+            to_add.append({
+                "name": "Target_System",
+                "type": "singleSelect",
+                "options": {
+                    "choices": [
+                        {"name": "Brea 3"},
+                        {"name": "BOSS"},
+                        {"name": "Factory"},
+                        {"name": "Phone"},
+                    ]
+                },
+            })
 
         for field_def in to_add:
             r = requests.post(fields_url, headers=AIRTABLE_HEADERS, json=field_def)

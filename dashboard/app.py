@@ -386,7 +386,7 @@ _SPEC_SYSTEM = (
     "{\n"
     '  "capability_name": "...",\n'
     '  "module": "...",\n'
-    '  "platform": "Brea3 | BOSS | Factory",\n'
+    '  "platform": "Brea 3 | BOSS | Factory | Phone",\n'
     '  "description": "...",\n'
     '  "files_to_touch": ["..."],\n'
     '  "tasks": [\n'
@@ -398,6 +398,24 @@ _SPEC_SYSTEM = (
     "Critical = Danielle provides written confirmation.\n\n"
     "Never use markdown formatting. Never pad. Never ask her to re-explain context you have."
 )
+
+_TARGET_SYSTEM_MAP = {
+    "brea3": "Brea 3", "brea 3": "Brea 3",
+    "boss": "BOSS", "the boss": "BOSS",
+    "factory": "Factory", "brea factory": "Factory",
+    "phone": "Phone", "brea_phone": "Phone", "brea phone": "Phone",
+}
+
+
+def _normalize_target_system(raw: str) -> str:
+    """
+    Maps a free-text platform value from the spec LLM onto the exact
+    Target_System singleSelect choices. Returns "" (never a guess) if the
+    value is missing or unrecognized -- an unrecognized value must never
+    reach Airtable, since an unlisted singleSelect option 422s the whole
+    task-creation request without typecast.
+    """
+    return _TARGET_SYSTEM_MAP.get((raw or "").strip().lower(), "")
 
 
 @app.route("/api/spec", methods=["POST"])
@@ -449,6 +467,11 @@ def spec_chat():
         }), 500
 
     queued, failed = [], []
+    platform      = spec.get("platform", "")
+    target_system = _normalize_target_system(platform)
+    if platform and not target_system:
+        print(f"  [WARN] Unrecognized platform value from spec: {platform!r} -- Target_System left unset")
+
     for task in spec.get("tasks", []):
         record = {"fields": {
             "Task_Name":   task.get("task_name", ""),
@@ -456,6 +479,8 @@ def spec_chat():
             "Status":      "Queued",
             "Description": task.get("description", ""),
         }}
+        if target_system:
+            record["fields"]["Target_System"] = target_system
         try:
             r = requests.post(
                 f"https://api.airtable.com/v0/{FACTORY_BASE_ID}/TASK_QUEUE",
