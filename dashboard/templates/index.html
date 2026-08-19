@@ -354,7 +354,7 @@ body{
       <div class="grid" id="grid">
         <div class="tile" data-f="overview"><div class="ic">◈</div><div class="n">Overview</div></div>
         <div class="tile" data-f="queue"><div class="ic">≡</div><div class="n">Task Queue</div><span class="badge" id="queueBadge" hidden>0</span></div>
-        <div class="tile" data-f="review"><div class="ic">✓</div><div class="n">Review</div><span class="badge">1</span></div>
+        <div class="tile" data-f="review"><div class="ic">✓</div><div class="n">Review</div><span class="badge" id="reviewBadge" hidden>0</span></div>
         <div class="tile" data-f="activity"><div class="ic">◧</div><div class="n">Activity</div></div>
         <div class="tile" data-f="tenants"><div class="ic">⌂</div><div class="n">Tenants</div></div>
         <div class="tile" data-f="preview"><div class="ic">▤</div><div class="n">Live Preview</div></div>
@@ -379,13 +379,7 @@ body{
       </div>
 
       <div class="feature" id="review">
-        <div class="fh">Review · mock — real approvals surface as a live card over the stage</div>
-        <div class="row" style="border:none;padding-top:0"><div class="t">Add empire health route<small>brea_factory.py</small></div><span class="tag t-app">Approve</span></div>
-        <div class="diff"><span class="ctx">@@ brea_factory.py @@</span>
-<span class="add">+ @app.route('/api/empire/status')</span>
-<span class="add">+ def empire_status():</span>
-<span class="add">+     return jsonify(check_all_services())</span></div>
-        <div class="acts"><button class="btn pri" disabled>Approve</button><button class="btn" disabled>Edit</button><button class="btn dng" disabled>Reject</button></div>
+        <div class="fh">Review</div>
       </div>
 
       <div class="feature" id="activity">
@@ -1024,6 +1018,7 @@ grid.addEventListener('click', e => {
   back.style.visibility = 'visible';
   if (t.dataset.f === 'activity') loadActivity();
   if (t.dataset.f === 'queue') loadTasks();
+  if (t.dataset.f === 'review') loadReview();
   if (t.dataset.f === 'overview') loadOverview();
 });
 
@@ -1157,6 +1152,32 @@ async function loadActivity() {
 }
 
 
+function loadReview() {
+  const MODE_TAG = { 'Approve': 'app', 'Critical': 'crit' };
+  fetch('/api/review')
+    .then(res => res.json())
+    .then(rows => {
+      if (!Array.isArray(rows)) return;
+      const badge = document.getElementById('reviewBadge');
+      if (badge) {
+        badge.textContent = rows.length;
+        badge.hidden = rows.length === 0;
+      }
+      const panel = document.getElementById('review');
+      const fh    = panel.querySelector('.fh');
+      const body  = rows.map(r => {
+        const tagClass = MODE_TAG[r.mode] || 'app';
+        const sub = [r.module, r.mode].filter(Boolean).join(' · ') || '—';
+        return `<div class="row"><div class="t">${r.task_name}<small>${sub}</small></div><span class="tag t-${tagClass}">${r.mode}</span></div>`;
+      }).join('');
+      panel.innerHTML = '';
+      panel.appendChild(fh);
+      panel.insertAdjacentHTML('beforeend', body || '<div class="row" style="border:none">No tasks awaiting review.</div>');
+    })
+    .catch(e => console.error('loadReview failed', e));
+}
+
+
 function loadTasks() {
   const STATUS_TAG = {
     'Complete':     'auto',
@@ -1248,6 +1269,8 @@ setInterval(loadTasks, 30_000);
 loadOverview();
 setInterval(loadOverview, 30_000);
 loadProjects();
+loadReview();
+setInterval(loadReview, 30_000);
 </script>
 </body>
 </html>

@@ -372,6 +372,41 @@ def get_projects():
         return jsonify({"error": str(e)}), 500
 
 
+@app.route("/api/review")
+def get_review():
+    try:
+        r = requests.get(f"http://localhost:{FACTORY_PORT}/queue", timeout=5)
+        r.raise_for_status()
+        data = r.json()
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+    rows = []
+    for task_id in data.get("pending_approvals", []):
+        fields = _fetch_task_fields(task_id)
+        if fields:
+            rows.append({
+                "task_id":     task_id,
+                "task_name":   fields.get("Task_Name", ""),
+                "description": fields.get("Description", ""),
+                "module":      fields.get("Module", ""),
+                "priority":    fields.get("Priority", ""),
+                "mode":        "Approve",
+            })
+    for task_id in data.get("pending_criticals", []):
+        fields = _fetch_task_fields(task_id)
+        if fields:
+            rows.append({
+                "task_id":     task_id,
+                "task_name":   fields.get("Task_Name", ""),
+                "description": fields.get("Description", ""),
+                "module":      fields.get("Module", ""),
+                "priority":    fields.get("Priority", ""),
+                "mode":        "Critical",
+            })
+    return jsonify(rows)
+
+
 @app.route("/api/conversation-history")
 def conversation_history():
     try:
