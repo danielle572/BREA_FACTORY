@@ -191,7 +191,7 @@ def _get_empire_context() -> str:
     """Fetches live empire state from Airtable for Brea's system prompt."""
     parts = []
     try:
-        caps    = at_get("MASTER_CAPABILITY_REGISTRY", max_records=200)
+        caps    = at_get("MASTER_CAPABILITY_REGISTRY", fetch_all=True)
         active  = sum(1 for r in caps if r.get("fields", {}).get("Status") == "Active")
         pending = sum(1 for r in caps
                       if "Pending" in str(r.get("fields", {}).get("Status", "")))
@@ -555,8 +555,9 @@ def spec_chat():
         }), 500
 
     queued, failed = [], []
-    platform      = spec.get("platform", "")
-    target_system = _normalize_target_system(platform)
+    project_selected = data.get("project", "")
+    platform         = project_selected or spec.get("platform", "")
+    target_system    = _normalize_target_system(platform)
     if platform and not target_system:
         print(f"  [WARN] Unrecognized platform value from spec: {platform!r} -- Target_System left unset")
 
